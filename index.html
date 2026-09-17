@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.19</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.20</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1337,12 +1337,14 @@ function startRec() {
     } catch (eM) {}
     var silentFrames = 0;
     Voice.recFrames = 0;
+    Voice.recPeak = 0;
     sp.onaudioprocess = function (e) {
       Voice.recFrames++;
       var ch = e.inputBuffer.getChannelData(0);
       // 静音检测：峰值过低视为无声音输入（用于提示用户）
       var peak = 0;
       for (var k = 0; k < ch.length; k += 50) { var av = Math.abs(ch[k]); if (av > peak) peak = av; }
+      Voice.recPeak = peak;
       if (peak < 0.004) { silentFrames++; } else { silentFrames = 0; }
       if (silentFrames === 35 && Voice.recOn) {
         var cSt = document.getElementById("callStatus");
@@ -1378,7 +1380,8 @@ function startRec() {
           var sr = "?", st = "?";
           try { if (Voice.recCtx) { sr = Voice.recCtx.sampleRate; st = Voice.recCtx.state; } } catch (eDg) {}
           var wsSt = (Voice.xfSession && Voice.xfSession.ws) ? Voice.xfSession.ws.readyState : "?";
-          var diag = "🎙️ 录音中 [帧 " + (Voice.recFrames || 0) + " · " + sr + "Hz · " + st + " · ws" + wsSt + "]";
+          var pk = (Voice.recPeak || 0) >= 0.01 ? (Voice.recPeak.toFixed(3)) : "0.000";
+          var diag = "🎙️ 录音中 [帧 " + (Voice.recFrames || 0) + " · peak " + pk + " · " + sr + "Hz · " + st + " · ws" + wsSt + "]";
           csd.innerHTML = diag + "<br>说完点「✅ 说完了」（AI 不会打断你）";
         }, 2000);
       } catch (eDiag) {}
@@ -1720,6 +1723,7 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
   return s;
 }
 function voiceCleanup() {
+  if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
   if (Voice.xfTimer) { clearInterval(Voice.xfTimer); Voice.xfTimer = null; }
   if (Voice.xfSession) { try { Voice.xfSession.kill(); } catch (e) {} Voice.xfSession = null; }
   if (Voice.recOn) { Voice.recOn = false; try { if (Voice.recStream) Voice.recStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
@@ -1871,6 +1875,7 @@ function callSubAction() {
 }
 function onCallRecognized(txt) {
   if (!Call.active) return;
+  if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
   if (!txt) {
     if (Voice.recOn) voiceCleanup();
     var st = document.getElementById("callStatus");
