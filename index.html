@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.17</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.18</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1253,6 +1253,14 @@ function startRec() {
     if (!confirm(msg)) return;
     return;
   }
+  // iOS 手势栈预建 AudioContext：必须在点击同步栈里创建+resume，否则 iOS 一直 suspended、录音不采集
+  Voice.recCtxPre = null;
+  try {
+    var CtxPre = window.AudioContext || window.webkitAudioContext;
+    var ctxPre = new CtxPre();
+    if (ctxPre.state === "suspended") { var rPre = ctxPre.resume(); if (rPre && rPre.catch) rPre.catch(function () {}); }
+    Voice.recCtxPre = ctxPre;
+  } catch (ePre) {}
   var onFail = function (err) {
     var why = "无法访问麦克风";
     if (err) {
@@ -1270,9 +1278,9 @@ function startRec() {
   };
   navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
     Voice.recStream = stream;
-    var Ctx = window.AudioContext || window.webkitAudioContext;
-    var ctx = new Ctx();
-    // iOS Safari 的 AudioContext 初始为 suspended，必须 resume 录音线程才会跑（否则音频不采集，讯飞静音超时返回空）
+    // iOS 关键：AudioContext 必须在用户点击手势的同步栈内创建并 resume（getUserMedia 回调是异步栈，iOS 会拒绝 resume，
+    // 导致 ctx 永远 suspended、onaudioprocess 不触发、讯飞收不到音频卡"识别中"）。这里在 startRec 开头已预建，直接复用。
+    var ctx = Voice.recCtxPre || (function () { var C2 = window.AudioContext || window.webkitAudioContext; return new C2(); })();
     if (ctx.state === "suspended") { try { var rp = ctx.resume(); if (rp && rp.catch) rp.catch(function () {}); } catch (eR) {} }
     Voice.recCtx = ctx;
     var src = ctx.createMediaStreamSource(stream);
@@ -1328,7 +1336,9 @@ function startRec() {
       muteGain.connect(ctx.destination);
     } catch (eM) {}
     var silentFrames = 0;
+    Voice.recFrames = 0;
     sp.onaudioprocess = function (e) {
+      Voice.recFrames++;
       var ch = e.inputBuffer.getChannelData(0);
       // 静音检测：峰值过低视为无声音输入（用于提示用户）
       var peak = 0;
@@ -1359,6 +1369,19 @@ function startRec() {
       var cw = document.getElementById("callWave"); if (cw) cw.classList.add("on");
       var ca = document.getElementById("callAvatar"); if (ca) { ca.textContent = "👂"; ca.classList.remove("thinking"); }
       var mb = document.getElementById("callMainBtn"); if (mb) { mb.textContent = "✅ 说完了"; mb.disabled = false; }
+      // 录音诊断：2 秒刷新一次（帧数/采样率/ctx状态），用于定位 iOS 录音不采集
+      try {
+        clearInterval(Voice.recDiagTimer);
+        Voice.recDiagTimer = setInterval(function () {
+          if (!Voice.recOn || !Voice.recCall) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; return; }
+          var csd = document.getElementById("callStatus"); if (!csd) return;
+          var sr = "?", st = "?";
+          try { if (Voice.recCtx) { sr = Voice.recCtx.sampleRate; st = Voice.recCtx.state; } } catch (eDg) {}
+          var wsSt = (Voice.xfSession && Voice.xfSession.ws) ? Voice.xfSession.ws.readyState : "?";
+          var diag = "🎙️ 录音中 [帧 " + (Voice.recFrames || 0) + " · " + sr + "Hz · " + st + " · ws" + wsSt + "]";
+          csd.innerHTML = diag + "<br>说完点「✅ 说完了」（AI 不会打断你）";
+        }, 2000);
+      } catch (eDiag) {}
     } else {
       var btn = document.getElementById("ivMic");
       if (btn) { btn.classList.add("recording"); btn.innerHTML = "⏺ 0s"; }
@@ -1396,6 +1419,7 @@ function stopRec(cb) {
     return;
   }
   if (Voice.recTimer) { clearInterval(Voice.recTimer); Voice.recTimer = null; }
+  if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
   if (Voice.xfTimer) { clearInterval(Voice.xfTimer); Voice.xfTimer = null; }
   if (wasCall) {
     var cw2 = document.getElementById("callWave"); if (cw2) cw2.classList.remove("on");
@@ -1410,7 +1434,7 @@ function stopRec(cb) {
   }
   try { if (Voice.recStream) Voice.recStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
   try { if (Voice.recCtx) Voice.recCtx.close(); } catch (e) {}
-  Voice.recStream = null; Voice.recCtx = null; Voice.recChunks = null;
+  Voice.recStream = null; Voice.recCtx = null; Voice.recChunks = null; Voice.recCtxPre = null;
   var sess = Voice.xfSession;
   Voice.xfSession = null;
   if (sess) {
