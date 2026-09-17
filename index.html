@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.18</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.19</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1439,9 +1439,22 @@ function stopRec(cb) {
   Voice.xfSession = null;
   if (sess) {
     sess.close();
+    // 识别等待诊断：2 秒刷新显示等待秒数+已录音帧数+ws状态
+    var waitSec = 0;
+    try {
+      clearInterval(Voice.recDiagTimer);
+      Voice.recDiagTimer = setInterval(function () {
+        waitSec++;
+        var csd = document.getElementById("callStatus"); if (!csd) return;
+        var wsSt = "?", fr = Voice.recFrames || 0;
+        try { if (Voice.xfSession && Voice.xfSession.ws) wsSt = Voice.xfSession.ws.readyState; } catch (eW) {}
+        csd.innerHTML = "🧠 识别中…已等 " + waitSec + "s [录音帧 " + fr + " · ws" + wsSt + "]";
+      }, 1000);
+    } catch (eWd) {}
     var guard = setTimeout(function () {
       if (!Voice.xfFinalSent) {
         Voice.xfFinalSent = true;
+        if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
         if (wasCall) onCallRecognized(Voice.xfFull);
         else if (cb) cb(Voice.xfFull);
       }
