@@ -145,6 +145,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <h1>运维工程师面试题库（基于简历定制）</h1>
   <p class="subtitle">按简历《运维工程师简历-王毅寒》技能栈定制，覆盖面试官可能问到的所有问题。支持进度打卡、随机小测、模拟面试。</p>
   <div class="stats" id="statsBox"></div>
+  <div id="studyPanel"></div>
   <div class="progress-wrap">
     <div class="progress-label" id="progressLabel">学习进度</div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
@@ -245,11 +246,91 @@ function loadState() {
     var s = JSON.parse(localStorage.getItem("qb_state"));
     if (s && s.progress) return s;
   } catch (e) {}
-  return { progress: {}, wrong: [], quiz: [], interview: [] };
+  return { progress: {}, wrong: [], quiz: [], interview: [], study: {} };
 }
 function saveState() { localStorage.setItem("qb_state", JSON.stringify(state)); }
 function qid(cid, idx) { return cid + ":" + idx; }
 function stOf(cid, idx) { return state.progress[qid(cid, idx)] || 0; }
+
+/* ============ 学习打卡 & 统计面板 ============ */
+function todayKey() {
+  var d = new Date(), m = d.getMonth() + 1, dd = d.getDate();
+  return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (dd < 10 ? "0" + dd : dd);
+}
+function markStudy(type) {
+  if (!state.study) state.study = {};
+  var k = todayKey();
+  if (!state.study[k]) state.study[k] = { open: 0, quiz: 0, wrong: 0, iv: 0 };
+  state.study[k][type] = (state.study[k][type] || 0) + 1;
+  saveState();
+  var sp = document.getElementById("studyPanel");
+  if (sp) renderStudyPanel();
+}
+function studyStreak() {
+  var keys = Object.keys(state.study || {}).sort().reverse();
+  var streak = 0;
+  var cursor = new Date();
+  for (var i = 0; i < keys.length; i++) {
+    var want = cursor.getFullYear() + "-" + ((cursor.getMonth() + 1) < 10 ? "0" + (cursor.getMonth() + 1) : (cursor.getMonth() + 1)) + "-" + (cursor.getDate() < 10 ? "0" + cursor.getDate() : cursor.getDate());
+    if (keys[i] === want) { streak++; cursor.setDate(cursor.getDate() - 1); }
+    else if (keys[i] < want) break;
+  }
+  return streak;
+}
+function renderStudyPanel() {
+  var sp = document.getElementById("studyPanel");
+  if (!sp) return;
+  var study = state.study || {};
+  var now = new Date();
+  var y = now.getFullYear(), m = now.getMonth();
+  var daysInMonth = new Date(y, m + 1, 0).getDate();
+  var firstDow = new Date(y, m, 1).getDay(); // 0=周日
+  var weekNames = ["日", "一", "二", "三", "四", "五", "六"];
+  var monthTotal = 0, openDays = 0;
+  for (var i = 0; i < daysInMonth; i++) {
+    var key = y + "-" + ((m + 1) < 10 ? "0" + (m + 1) : (m + 1)) + "-" + (i + 1 < 10 ? "0" + (i + 1) : (i + 1));
+    if (study[key]) { openDays++; monthTotal += (study[key].quiz || 0) + (study[key].wrong || 0) + (study[key].iv || 0); }
+  }
+  var streak = studyStreak();
+  var totalDays = Object.keys(study).length;
+  var cal = '<div class="study-grid">';
+  for (var w = 0; w < 7; w++) cal += '<div class="wd">' + weekNames[w] + '</div>';
+  for (var pad = 0; pad < firstDow; pad++) cal += '<div class="study-day dim"></div>';
+  for (var d = 1; d <= daysInMonth; d++) {
+    var dk = y + "-" + ((m + 1) < 10 ? "0" + (m + 1) : (m + 1)) + "-" + (d < 10 ? "0" + d : d);
+    var active = !!study[dk];
+    var cls = active ? " active" : "";
+    if (d === now.getDate()) cls += " today";
+    cal += '<div class="study-day' + cls + '">' + d + '</div>';
+  }
+  cal += '</div>';
+  // 分类掌握度
+  var catRows = "";
+  var anyCat = false;
+  for (var c = 0; c < CATS.length; c++) {
+    var cid = CATS[c].id, list = QDATA[cid] || [];
+    if (!list.length) continue;
+    anyCat = true;
+    var master = 0;
+    for (var j = 0; j < list.length; j++) if (stOf(cid, j) === 2) master++;
+    var pct = Math.round(master / list.length * 100);
+    catRows += '<div class="cat-progress-row"><span class="cat-progress-name">' + CATS[c].icon + " " + CATS[c].name + '</span>' +
+      '<span class="cat-progress-bar"><span class="cat-progress-fill" style="width:' + pct + '%"></span></span>' +
+      '<span class="cat-progress-num">' + master + '/' + list.length + ' ' + pct + '%</span></div>';
+  }
+  sp.innerHTML = '<div class="study-panel"><h3>📊 学习统计</h3><p class="study-sub">打卡日历（今天标记边框）/ 连续打卡 / 分类掌握度</p>' +
+    '<div class="study-flex">' +
+    '<div class="study-cal">' + cal +
+      '<div class="study-kpis">' +
+        '<div class="study-kpi"><b>' + streak + '</b><span>连续打卡(天)</span></div>' +
+        '<div class="study-kpi"><b>' + openDays + '</b><span>本月活跃(天)</span></div>' +
+        '<div class="study-kpi"><b>' + totalDays + '</b><span>累计学习(天)</span></div>' +
+        '<div class="study-kpi"><b>' + monthTotal + '</b><span>本月练习(次)</span></div>' +
+      '</div></div>' +
+    '<div class="study-stats"><h4 style="margin:0 0 4px;font-size:13px">分类掌握度</h4>' +
+      (anyCat ? catRows : '<div class="cat-progress-empty">暂无分类数据</div>') +
+    '</div></div></div>';
+}
 
 function starHtml(s) {
   var h = '<span class="q-stars">';
@@ -263,6 +344,13 @@ function tagHtml(tags) {
 }
 function esc(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function hl(text, term) {
+  if (!term) return esc(text);
+  var t = esc(text), tl = t.toLowerCase(), q = String(term).toLowerCase();
+  var idx = tl.indexOf(q);
+  if (idx < 0) return t;
+  return t.slice(0, idx) + "<mark>" + t.slice(idx, idx + term.length) + "</mark>" + t.slice(idx + term.length);
 }
 function answerHtml(a) {
   a = String(a);
@@ -319,6 +407,7 @@ function renderAll() {
     '<div class="stat-item"><span class="stat-num">' + (starCount[2] || 0) + '</span><span class="stat-label">★★</span></div>' +
     '<div class="stat-item"><span class="stat-num">' + (starCount[1] || 0) + '</span><span class="stat-label">★</span></div>' +
     '<div class="stat-item"><span class="stat-num">' + ans + '</span><span class="stat-label">参考答案</span></div>';
+  renderStudyPanel();
   var pct = total ? Math.round(mastered / total * 100) : 0;
   document.getElementById("progressFill").style.width = pct + "%";
   document.getElementById("progressText").textContent = "未刷 " + (total - done) + " · 已刷 " + (done - mastered) + " · 已掌握 " + mastered + " · 掌握率 " + pct + "%";
@@ -333,7 +422,7 @@ function renderAll() {
   if (MODE === "browse") renderCards();
 }
 
-function cardHtml(cid, q, idx) {
+function cardHtml(cid, q, idx, term) {
   var tags = q.t || [], st = stOf(cid, idx);
   var stNames = ["未刷", "已刷", "已掌握"];
   var ansBlock = q.c
@@ -343,7 +432,7 @@ function cardHtml(cid, q, idx) {
     : '<div class="q-answer">' + answerHtml(q.a) + '</div>';
   return '<div class="q-card st-' + (st === 2 ? "mastered" : "none") + '" id="card-' + qid(cid, idx).replace(":", "-") + '">' +
     starHtml(q.s) +
-    '<div class="q-text">' + esc(q.q) + tagHtml(tags) + '</div>' +
+    '<div class="q-text">' + hl(q.q, term) + tagHtml(tags) + '</div>' +
     '<div class="q-answer-toggle" onclick="this.parentElement.querySelector(\'.q-answer\').classList.toggle(\'show\')">💡 查看参考答案</div>' +
     ansBlock +
     '<span class="q-priority p' + q.s + '">' + PRI_NAME[q.s] + '</span>' +
@@ -372,7 +461,35 @@ function setProgress(cid, idx, st) {
   renderCards();
 }
 
+function saveFilters() {
+  try {
+    var f = { star: "all", status: "all", tags: [], term: "" };
+    var sf = document.querySelector(".filter-btn[data-filter].active");
+    if (sf) f.star = sf.dataset.filter;
+    var stf = document.querySelector(".filter-btn[data-status].active");
+    if (stf) f.status = stf.dataset.status;
+    Array.prototype.forEach.call(document.querySelectorAll(".filter-btn[data-tag].active"), function (b) { f.tags.push(b.dataset.tag); });
+    var sb = document.getElementById("searchBox");
+    if (sb) f.term = sb.value;
+    localStorage.setItem("qb_filters", JSON.stringify(f));
+  } catch (e) {}
+}
+function restoreFilters() {
+  try {
+    var f = JSON.parse(localStorage.getItem("qb_filters") || "null");
+    if (!f) return;
+    Array.prototype.forEach.call(document.querySelectorAll(".filter-btn"), function (b) {
+      b.classList.remove("active");
+      if (b.dataset.filter && b.dataset.filter === f.star) b.classList.add("active");
+      if (b.dataset.status && b.dataset.status === f.status) b.classList.add("active");
+      if (b.dataset.tag && f.tags && f.tags.indexOf(b.dataset.tag) >= 0) b.classList.add("active");
+    });
+    var sb = document.getElementById("searchBox");
+    if (sb && f.term) sb.value = f.term;
+  } catch (e) {}
+}
 function renderCards() {
+  restoreFilters();
   var starFilter = "all";
   var sf = document.querySelector(".filter-btn[data-filter].active");
   if (sf) starFilter = sf.dataset.filter;
@@ -398,10 +515,10 @@ function renderCards() {
         if (!hit) show = false;
       }
       if (show && term) {
-        var hay = (q.q + " " + (q.a || "")).toLowerCase();
+        var hay = (q.q + " " + (q.a || "") + " " + (q.c || "")).toLowerCase();
         if (hay.indexOf(term) < 0) show = false;
       }
-      if (show) { catHtml += cardHtml(cid, q, j); catVisible++; visible++; }
+      if (show) { catHtml += cardHtml(cid, q, j, term); catVisible++; visible++; }
     }
     if (catVisible) {
       html += '<section class="category" id="' + cid + '">' +
@@ -469,10 +586,47 @@ function doStartQuiz(all) {
       '<div class="quiz-ref" id="qr_' + m + '">' + answerHtml(q.c || q.a) + '</div>' +
       '<div class="quiz-grade" id="qg_' + m + '">' +
         '<span class="grade-label">AI/自评得分(0-10)：</span><input type="number" class="grade-score" id="qs_' + m + '" min="0" max="10" value="5">' +
+        '<button class="ai-judge-btn" id="aj_' + m + '" onclick="aiJudgeQuiz(' + m + ')">🤖 AI 判题</button>' +
         '<span class="grade-result" id="qres_' + m + '"></span>' +
+        '<div class="ai-judge-out" id="ajout_' + m + '" style="display:none"></div>' +
       '</div></div>';
   }
   document.getElementById("quizQs").innerHTML = qs;
+}
+function aiJudgeQuiz(m) {
+  var out = document.getElementById("ajout_" + m);
+  var btn = document.getElementById("aj_" + m);
+  if (!out || !btn) return;
+  var cfg = getAiConfig();
+  if (!cfg || !cfg.url) {
+    out.style.display = "block";
+    out.className = "ai-judge-out ai-judge-err";
+    out.textContent = "尚未配置 AI 接口：去「🎤 模拟面试」页底部「⚙️ 配置 AI 接口」，填入 DeepSeek 等 OpenAI 兼容接口的地址与 Key，就能自动判题打分。";
+    return;
+  }
+  if (!currentQuiz || !currentQuiz[m]) return;
+  var ansEl = document.getElementById("qa_" + m);
+  var ans = ansEl ? ansEl.value.trim() : "";
+  if (!ans) {
+    out.style.display = "block";
+    out.className = "ai-judge-out ai-judge-err";
+    out.textContent = "先在上方写下你的回答，再点 AI 判题。";
+    return;
+  }
+  btn.disabled = true; btn.textContent = "🤖 判题中…";
+  out.style.display = "block";
+  out.className = "ai-judge-out";
+  out.textContent = "AI 正在评分…（需几秒）";
+  callAI(cfg, currentQuiz[m], ans, function (ev) {
+    var sc = document.getElementById("qs_" + m);
+    if (sc) sc.value = ev.score;
+    out.textContent = "🤖 AI 评分：" + ev.score + "/10" + (ev.comment ? "\n" + ev.comment : "");
+    btn.disabled = false; btn.textContent = "🤖 AI 判题";
+  }, function () {
+    out.textContent = "AI 判题失败（接口/网络问题），请重试或手动评分。";
+    out.className = "ai-judge-out ai-judge-err";
+    btn.disabled = false; btn.textContent = "🤖 AI 判题";
+  });
 }
 function submitQuiz() {
   if (!currentQuiz) return;
@@ -507,6 +661,7 @@ function saveQuiz() {
   }
   state.quiz.push({ date: now, items: items, total: total, max: currentQuiz.length * 10, pct: Math.round(total / (currentQuiz.length * 10) * 100) });
   saveState();
+  markStudy("quiz");
   var ok = 0;
   for (var j = 0; j < items.length; j++) if (items[j].pass) ok++;
   document.getElementById("quizArea").innerHTML =
@@ -610,6 +765,7 @@ function finishInterview() {
   var report = { date: new Date().toLocaleString(), questions: iv.questions.map(function (x) { return { id: qid(x.cid, x.idx), q: QDATA[x.cid][x.idx].q, score: x.score }; }), total: total, max: iv.questions.length * 10, avg: avg, weak: weak };
   state.interview.push(report);
   saveState();
+  markStudy("iv");
   var rows = "";
   for (var m = 0; m < report.questions.length; m++) {
     rows += '<tr><td>' + (m + 1) + '</td><td>' + esc(report.questions[m].q) + '</td><td>' + report.questions[m].score + '</td></tr>';
@@ -671,7 +827,9 @@ function retestWrong() {
       '<div class="quiz-ref" id="qr_' + m + '">' + answerHtml(q.c || q.a) + '</div>' +
       '<div class="quiz-grade" id="qg_' + m + '">' +
         '<span class="grade-label">AI/自评得分(0-10)：</span><input type="number" class="grade-score" id="qs_' + m + '" min="0" max="10" value="5">' +
+        '<button class="ai-judge-btn" id="aj_' + m + '" onclick="aiJudgeQuiz(' + m + ')">🤖 AI 判题</button>' +
         '<span class="grade-result" id="qres_' + m + '"></span>' +
+        '<div class="ai-judge-out" id="ajout_' + m + '" style="display:none"></div>' +
       '</div></div>';
   }
   document.getElementById("quizQs").innerHTML = qs;
@@ -718,6 +876,7 @@ document.querySelectorAll(".filter-btn[data-filter]").forEach(function (btn) {
   btn.addEventListener("click", function () {
     document.querySelectorAll(".filter-btn[data-filter]").forEach(function (b) { b.classList.remove("active"); });
     btn.classList.add("active");
+    saveFilters();
     renderCards();
   });
 });
@@ -725,15 +884,18 @@ document.querySelectorAll(".filter-btn[data-status]").forEach(function (btn) {
   btn.addEventListener("click", function () {
     document.querySelectorAll(".filter-btn[data-status]").forEach(function (b) { b.classList.remove("active"); });
     btn.classList.add("active");
+    saveFilters();
     renderCards();
   });
 });
 document.querySelectorAll(".filter-btn[data-tag]").forEach(function (btn) {
-  btn.addEventListener("click", function () { btn.classList.toggle("active"); renderCards(); });
+  btn.addEventListener("click", function () { btn.classList.toggle("active"); saveFilters(); renderCards(); });
 });
-document.getElementById("searchBox").addEventListener("input", renderCards);
+document.getElementById("searchBox").addEventListener("input", function () { saveFilters(); renderCards(); });
 
 state = loadState();
+if (!state.study) state.study = {};
+markStudy("open");
 </script>
 <style>
 .iv-chat { max-width: 720px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; height: 66vh; min-height: 440px; overflow: hidden; }
@@ -795,6 +957,43 @@ state = loadState();
 .call-log .cl-user { color: #276749; }
 .call-log .cl-sys { color: #A0AEC0; }
 .call-note { text-align: center; font-size: 12px; color: var(--text-muted); padding: 0 16px 6px; }
+/* ============ 学习统计面板（打卡日历 + 分类掌握度） ============ */
+.study-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin: 12px 0 4px; }
+.study-panel h3 { margin: 0 0 4px; font-size: 15px; color: var(--text-primary); }
+.study-sub { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+.study-flex { display: flex; gap: 16px; flex-wrap: wrap; }
+.study-cal { flex: 1 1 260px; min-width: 240px; }
+.study-stats { flex: 1 1 200px; min-width: 180px; }
+.study-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 6px; }
+.study-grid .wd { font-size: 11px; color: var(--text-muted); text-align: center; padding: 2px 0; }
+.study-day { aspect-ratio: 1; border-radius: 6px; background: #EDF2F7; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+.study-day.dim { background: transparent; }
+.study-day.active { background: #C6F6D5; color: #22543D; font-weight: 600; border: 1px solid #9AE6B4; }
+.study-day.today { outline: 2px solid var(--accent); outline-offset: 1px; }
+.study-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
+.study-kpi { background: #F7FAFC; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; text-align: center; }
+.study-kpi b { display: block; font-size: 18px; color: var(--accent); }
+.study-kpi span { font-size: 11px; color: var(--text-muted); }
+.cat-progress { margin-top: 12px; }
+.cat-progress-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; }
+.cat-progress-name { width: 120px; flex-shrink: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-progress-bar { flex: 1; height: 8px; background: #EDF2F7; border-radius: 4px; overflow: hidden; }
+.cat-progress-fill { height: 100%; background: linear-gradient(90deg, #48BB78, #38A169); border-radius: 4px; }
+.cat-progress-num { width: 74px; flex-shrink: 0; text-align: right; color: var(--text-muted); font-size: 11px; }
+.cat-progress-empty { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+/* 搜索高亮 */
+.q-card mark { background: #FEFCBF; color: #744210; border-radius: 2px; padding: 0 1px; }
+/* AI 判题按钮与结果 */
+.ai-judge-btn { margin-left: 8px; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); background: #fff; cursor: pointer; }
+.ai-judge-btn:disabled { opacity: .55; cursor: wait; }
+.ai-judge-out { margin-top: 6px; padding: 8px 10px; background: #F0FFF4; border: 1px solid #9AE6B4; border-radius: 8px; font-size: 13px; color: #22543D; line-height: 1.6; white-space: pre-wrap; }
+.ai-judge-err { background: #FFF5F5; border-color: #FEB2B2; color: #742A2A; }
+.ai-style-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--text-secondary); }
+.ai-style-row select { flex: 1; }
+@media (max-width: 600px) {
+  .cat-progress-name { width: 92px; }
+  .cat-progress-num { width: 64px; }
+}
 </style>
 <script>
 /* ================= 模拟面试 v2：回合制聊天面试官（内置规则引擎 + 可选 AI 接口） ================= */
@@ -1148,18 +1347,33 @@ function commentFor(s) {
   return "这道题答得不够，记入薄弱点，面试后重点补。";
 }
 function getAiConfig() {
-  try { return JSON.parse(localStorage.getItem("qb_ai") || "null"); } catch (e) { return null; }
+  try {
+    var c = JSON.parse(localStorage.getItem("qb_ai") || "null");
+    if (c) { if (!c.style) c.style = "strict"; return c; }
+  } catch (e) {}
+  return null;
 }
 function saveAiConfig() {
   var cfg = { url: document.getElementById("aiUrl").value.trim(), key: document.getElementById("aiKey").value.trim(), model: document.getElementById("aiModel").value.trim() };
+  var sel = document.getElementById("aiStyle");
+  if (sel) cfg.style = sel.value;
   var tip = document.getElementById("aiCfgTip");
   if (!cfg.url) { localStorage.removeItem("qb_ai"); if (tip) tip.textContent = "已清除配置，使用内置引擎"; return; }
   localStorage.setItem("qb_ai", JSON.stringify(cfg));
   if (tip) tip.textContent = "已保存（" + (cfg.model || "默认模型") + "）";
 }
-function callAI(cfg, cur, text, ok, fail) {
+var AI_STYLE_PROMPT = {
+  strict: "你是非常严格的资深运维面试官，追问犀利，对模糊回答零容忍，评分从严。",
+  gentle: "你是温和引导型的面试官，鼓励候选人，可适当提示方向，评分略宽松。",
+  stress: "你是压力面试官，语气直接、连续追问，重点考察候选人的抗压与临场反应，评分从严。",
+  hr: "你是 HR 面试官，关注表达逻辑、求职动机与软素质，技术深度不苛求。"
+};
+function aiJudgePrompt(cur, text, style) {
   var q = QDATA[cur.cid][cur.idx];
-  var prompt = "你是资深运维面试官。面试题：" + q.q + "\n参考答案要点：" + String(q.c || q.a || "").substring(0, 400) + "\n候选人的回答：" + text + "\n只输出JSON：{\"score\":0到10数字,\"comment\":\"一句话点评\"}";
+  return (AI_STYLE_PROMPT[style] || AI_STYLE_PROMPT.strict) + "\n面试题：" + q.q + "\n参考答案要点：" + String(q.c || q.a || "").substring(0, 400) + "\n候选人的回答：" + text + "\n只输出JSON：{\"score\":0到10数字,\"comment\":\"一句话点评\"}";
+}
+function callAI(cfg, cur, text, ok, fail) {
+  var prompt = aiJudgePrompt(cur, text, cfg.style || "strict");
   fetch(cfg.url, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + cfg.key }, body: JSON.stringify({ model: cfg.model || "deepseek-chat", messages: [{ role: "user", content: prompt }], temperature: 0.3, max_tokens: 300 }) })
     .then(function (r) { return r.json(); })
     .then(function (d) {
@@ -1450,6 +1664,13 @@ function renderInterviewMain(main) {
     '<label>接口地址（OpenAI 兼容，如 https://api.deepseek.com/chat/completions）</label><input id="aiUrl" placeholder="https://...">' +
     '<label>API Key</label><input id="aiKey" type="password" placeholder="sk-...">' +
     '<label>模型名</label><input id="aiModel" placeholder="如 deepseek-chat">' +
+    '<div class="ai-style-row"><label for="aiStyle" style="margin:0">面试官风格：</label>' +
+      '<select id="aiStyle">' +
+        '<option value="strict">😠 严格技术面（默认）</option>' +
+        '<option value="gentle">😊 温和引导面</option>' +
+        '<option value="stress">🔥 压力面（考察抗压）</option>' +
+        '<option value="hr">💼 HR 面（软素质）</option>' +
+      '</select></div>' +
     '<button class="btn" onclick="saveAiConfig()">保存配置</button> <span id="aiCfgTip" style="font-size:12px;color:#718096"></span></details>' +
     '<details class="ai-config"><summary>🎙️ 语音设置（AI 念题 + 语音作答，AI 不会打断你）</summary>' +
     '<p style="font-size:12px;color:#718096;margin:4px 0 8px">语音识别用「讯飞语音听写」（浏览器直连，需免费注册）。不配置也能用：直接打字，或用手机输入法自带的语音键输入。</p>' +
@@ -1464,10 +1685,11 @@ function renderInterviewMain(main) {
   main.innerHTML = html;
   var cfg = getAiConfig();
   if (cfg) {
-    var u = document.getElementById("aiUrl"), k = document.getElementById("aiKey"), m = document.getElementById("aiModel");
+    var u = document.getElementById("aiUrl"), k = document.getElementById("aiKey"), m = document.getElementById("aiModel"), st = document.getElementById("aiStyle");
     if (u) u.value = cfg.url || "";
     if (k) k.value = cfg.key || "";
     if (m) m.value = cfg.model || "";
+    if (st && cfg.style) st.value = cfg.style;
     document.getElementById("aiCfgTip").textContent = "已保存配置（" + (cfg.model || "默认模型") + "）";
   }
   fillVoiceCfg();
@@ -1648,6 +1870,7 @@ function finishInterview() {
   var report = { date: new Date().toLocaleString(), questions: iv.questions.map(function (x) { return { id: qid(x.cid, x.idx), q: QDATA[x.cid][x.idx].q, score: x.score }; }), total: total, max: iv.questions.length * 10, avg: avg, weak: weak };
   state.interview.push(report);
   saveState();
+  markStudy("iv");
   if (Call.active) {
     Call.finishing = true;
     addMsg("ai", "面试结束！总分 " + total + "/" + report.max + "，平均 " + avg + " 分/题。" + (weak.length ? "待加强分类：" + weak.join("、") + "。" : "整体表现良好。"));
