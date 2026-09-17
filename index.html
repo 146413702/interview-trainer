@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.15</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.17</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1453,7 +1453,7 @@ function xfRecognize(cfg, pcm, done) {
     var finish = function () { if (!finished) { finished = true; try { ws.close(); } catch (e) {} done(resultText.trim()); } };
     ws.onopen = function () {
       var fmt = "audio/L16;rate=16000", enc2 = "raw";
-      ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000, dwa: 0 }, data: { status: 0, format: fmt, encoding: enc2 } }));
+      ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
       var bytes = new Uint8Array(pcm.buffer);
       var CH = 2560, off = 0;
       while (off < bytes.length) {
@@ -1620,7 +1620,7 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
         if (s.closed || gen !== s.gen) return;
         s.retries = 0;
         var fmt = "audio/L16;rate=16000", enc2 = "raw";
-        ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000, dwa: 0 }, data: { status: 0, format: fmt, encoding: enc2 } }));
+        ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
       };
       ws.onmessage = function (e) {
         if (s.closed || gen !== s.gen) return;
