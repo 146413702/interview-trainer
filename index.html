@@ -232,6 +232,21 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
     }
   } catch (e) {}
 })();
+/* ============ AI 配置一键导入：链接尾部 #qb_ai=<base64> 自动写入并提示 ============ */
+(function () {
+  try {
+    var h = location.hash || "";
+    if (h.indexOf("#qb_ai=") === 0) {
+      var b64 = h.substring(7);
+      var json = decodeURIComponent(escape(atob(b64)));
+      localStorage.setItem("qb_ai", json);
+      history.replaceState(null, "", location.pathname);
+      setTimeout(function () {
+        alert("✅ AI 配置已自动导入并保存！模拟面试将启用 AI 现场判题与追问，可一键收录新题。");
+      }, 300);
+    }
+  } catch (e) {}
+})();
 var QDATA = QDATA || {};
 var CATS = [
   { id: "linux", icon: "🐧", name: "Linux 与 Shell" },
