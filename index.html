@@ -1303,7 +1303,12 @@ function startRec() {
         }
       },
       function (code) {
-        var msg = "识别失败（" + code + "）。检查 Key 是否正确、是否实名、免费额度是否用完。";
+        var msg;
+        if (code === "网络连接失败") {
+          msg = "连接讯飞语音服务失败（已自动重试）。请检查：①当前网络能否访问外网（可切 WiFi/4G 再试）②是否开了代理/VPN/广告拦截。点「🔁 重试开麦」再试，仍不行可「📴 挂断」改用文字模式面试。";
+        } else {
+          msg = "识别失败（" + code + "）。检查 Key 是否正确、是否实名、免费额度是否用完。";
+        }
         if (Voice.recCall) { var cs2 = document.getElementById("callStatus"); if (cs2) cs2.innerHTML = "❌ " + msg; }
         else alert(msg);
       });
@@ -1563,44 +1568,64 @@ function pickInterviewQuestions(n) {
 /* ============ 流式语音识别（边说边出字） ============ */
 function xfOpenStream(cfg, onLive, onFinal, onErr) {
   var host = "iat-api.xfyun.cn", path = "/v2/iat";
-  var date = new Date().toUTCString();
-  var sigOrigin = "host: " + host + "\ndate: " + date + "\nGET " + path + " HTTP/1.1";
   var enc = new TextEncoder();
-  var s = { ws: null, seq: 1, full: "", cur: "", closed: false, failed: false, live: onLive, final: onFinal, err: onErr };
-  crypto.subtle.importKey("raw", enc.encode(cfg.xfSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]).then(function (key) {
-    return crypto.subtle.sign("HMAC", key, enc.encode(sigOrigin));
-  }).then(function (sigBuf) {
-    var sig = arrayBufferToBase64(sigBuf.buffer || sigBuf);
-    var authOrigin = 'api_key="' + cfg.xfKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + sig + '"';
-    var url = "wss://" + host + path + "?authorization=" + encodeURIComponent(arrayBufferToBase64(enc.encode(authOrigin).buffer)) + "&date=" + encodeURIComponent(date) + "&host=" + host;
-    var ws = new WebSocket(url);
-    s.ws = ws;
-    ws.onopen = function () {
-      var fmt = "audio/L16;rate=16000", enc2 = "raw";
-      ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000, dwa: 0 }, data: { status: 0, format: fmt, encoding: enc2 } }));
-    };
-    ws.onmessage = function (e) {
-      try {
-        var d = JSON.parse(e.data);
-        if (d.code && d.code !== 0) { s.closed = true; if (s.err) s.err(d.code + (d.desc ? " " + d.desc : "")); try { ws.close(); } catch (e2) {} return; }
-        if (d.data && d.data.result) {
-          var obj = JSON.parse(decodeURIComponent(escape(atob(d.data.result))));
-          var words = "";
-          if (obj.ws) {
-            for (var i = 0; i < obj.ws.length; i++) {
-              var cw = obj.ws[i].cw;
-              for (var j = 0; j < cw.length; j++) if (cw[j].w) words += cw[j].w;
+  var s = { ws: null, seq: 1, full: "", cur: "", closed: false, failed: false, live: onLive, final: onFinal, err: onErr, retries: 0, gen: 0 };
+  function connect() {
+    if (s.closed) return;
+    var gen = ++s.gen;
+    var date = new Date().toUTCString();
+    var sigOrigin = "host: " + host + "\ndate: " + date + "\nGET " + path + " HTTP/1.1";
+    crypto.subtle.importKey("raw", enc.encode(cfg.xfSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]).then(function (key) {
+      return crypto.subtle.sign("HMAC", key, enc.encode(sigOrigin));
+    }).then(function (sigBuf) {
+      if (s.closed || gen !== s.gen) return;
+      var sig = arrayBufferToBase64(sigBuf.buffer || sigBuf);
+      var authOrigin = 'api_key="' + cfg.xfKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + sig + '"';
+      var url = "wss://" + host + path + "?authorization=" + encodeURIComponent(arrayBufferToBase64(enc.encode(authOrigin).buffer)) + "&date=" + encodeURIComponent(date) + "&host=" + host;
+      var ws = new WebSocket(url);
+      s.ws = ws;
+      ws.onopen = function () {
+        if (s.closed || gen !== s.gen) return;
+        s.retries = 0;
+        var fmt = "audio/L16;rate=16000", enc2 = "raw";
+        ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000, dwa: 0 }, data: { status: 0, format: fmt, encoding: enc2 } }));
+      };
+      ws.onmessage = function (e) {
+        if (s.closed || gen !== s.gen) return;
+        try {
+          var d = JSON.parse(e.data);
+          if (d.code && d.code !== 0) { s.closed = true; if (s.err) s.err(d.code + (d.desc ? " " + d.desc : "")); try { ws.close(); } catch (e2) {} return; }
+          if (d.data && d.data.result) {
+            var obj = JSON.parse(decodeURIComponent(escape(atob(d.data.result))));
+            var words = "";
+            if (obj.ws) {
+              for (var i = 0; i < obj.ws.length; i++) {
+                var cw = obj.ws[i].cw;
+                for (var j = 0; j < cw.length; j++) if (cw[j].w) words += cw[j].w;
+              }
             }
+            if (obj.rg === 1) { s.full += s.cur + words; s.cur = ""; if (s.live) s.live(s.full); }
+            else { s.cur = words; if (s.live) s.live(s.full + s.cur); }
           }
-          if (obj.rg === 1) { s.full += s.cur + words; s.cur = ""; if (s.live) s.live(s.full); }
-          else { s.cur = words; if (s.live) s.live(s.full + s.cur); }
+          if (d.data && d.data.status === 2) { s.closed = true; try { ws.close(); } catch (e2) {} }
+        } catch (e2) {}
+      };
+      ws.onerror = function () {
+        if (s.closed || gen !== s.gen) return;
+        // 瞬时网络抖动：自动重试最多 2 次
+        if (s.retries < 2) {
+          s.retries++;
+          try { ws.close(); } catch (e2) {}
+          setTimeout(connect, 1200 * s.retries);
+          return;
         }
-        if (d.data && d.data.status === 2) { s.closed = true; try { ws.close(); } catch (e2) {} }
-      } catch (e2) {}
-    };
-    ws.onerror = function () { if (!s.closed) { s.closed = true; s.failed = true; if (s.err) s.err("网络连接失败"); try { ws.close(); } catch (e2) {} } };
-    ws.onclose = function () { if (!s.failed && s.final) s.final(s.full); };
-  }).catch(function () { if (s.err) s.err("签名失败"); });
+        s.closed = true; s.failed = true;
+        if (s.err) s.err("网络连接失败");
+      };
+      ws.onclose = function () { if (!s.failed && gen === s.gen && s.final) s.final(s.full); };
+    }).catch(function () { if (!s.closed && gen === s.gen && s.err) s.err("签名失败"); });
+  }
+  connect();
   s.send = function (int16) {
     if (!s.ws || s.ws.readyState !== 1) return;
     var cp = new Int16Array(int16.length); cp.set(int16);
