@@ -1304,7 +1304,12 @@ function startRec() {
       },
       function (code) {
         var dbg = "";
-        try { if (window.__dbgFrames && window.__dbgFrames.length) dbg = " [最近发送帧] " + window.__dbgFrames.join(" ｜ "); } catch (eD) {}
+        try {
+          var parts = [];
+          if (window.__dbgFrames && window.__dbgFrames.length) parts.push("发送:" + window.__dbgFrames.join("｜"));
+          if (window.__dbgMsgs && window.__dbgMsgs.length) parts.push("服务端:" + window.__dbgMsgs.join("｜"));
+          if (parts.length) dbg = " [诊断] " + parts.join("；");
+        } catch (eD) {}
         var msg;
         if (code === "网络连接失败") {
           msg = "连接讯飞语音服务失败（已自动重试）。请检查：①当前网络能否访问外网（可切 WiFi/4G 再试）②是否开了代理/VPN/广告拦截。点「🔁 重试开麦」再试，仍不行可「📴 挂断」改用文字模式面试。";
@@ -1620,6 +1625,12 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
       ws.onmessage = function (e) {
         if (s.closed || gen !== s.gen) return;
         try {
+          var rawMsg = String(e.data).slice(0, 200);
+          try {
+            window.__dbgMsgs = window.__dbgMsgs || [];
+            window.__dbgMsgs.push("resp:" + rawMsg);
+            if (window.__dbgMsgs.length > 3) window.__dbgMsgs.shift();
+          } catch (eD2) {}
           var d = JSON.parse(e.data);
           if (d.code && d.code !== 0) { s.closed = true; if (s.err) s.err(d.code + (d.desc ? " " + d.desc : "")); try { ws.close(); } catch (e2) {} return; }
           if (d.data && d.data.result) {
