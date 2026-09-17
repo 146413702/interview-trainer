@@ -1,0 +1,16 @@
+{
+  "name": "运维面试官（王毅寒定制）",
+  "short_name": "运维面试官",
+  "description": "基于简历定制的运维/DevOps 面试刷题与模拟面试工具（支持语音通话式面试）",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
