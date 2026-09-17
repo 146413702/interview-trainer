@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.21</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.22</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1166,7 +1166,7 @@ function micTest() {
     var ins = ds.filter(function (d) { return d.kind === "audioinput"; });
     var names = ins.length ? ins.map(function (d) { return d.label ? d.label : "(未授权，看不到名称)"; }).join("\n") : "无";
     alert("检测到录音设备 " + ins.length + " 个：\n" + names + "\n\n（点「确定」继续测试能否真正打开麦克风）");
-    return navigator.mediaDevices.getUserMedia({ audio: true });
+    return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
   }).then(function (stream) {
     var n = stream.getTracks().length;
     stream.getTracks().forEach(function (t) { t.stop(); });
@@ -1276,7 +1276,7 @@ function startRec() {
       if (mb1) { mb1.textContent = "🔁 重试开麦"; mb1.disabled = false; }
     } else alert(why + "。可用手机输入法语音输入代替。");
   };
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }).then(function (stream) {
     Voice.recStream = stream;
     // iOS 关键：AudioContext 必须在用户点击手势的同步栈内创建并 resume（getUserMedia 回调是异步栈，iOS 会拒绝 resume，
     // 导致 ctx 永远 suspended、onaudioprocess 不触发、讯飞收不到音频卡"识别中"）。这里在 startRec 开头已预建，直接复用。
@@ -1348,7 +1348,7 @@ function startRec() {
       if (peak < 0.004) { silentFrames++; } else { silentFrames = 0; }
       if (silentFrames === 35 && Voice.recOn) {
         var cSt = document.getElementById("callStatus");
-        if (cSt && Voice.recCall) cSt.innerHTML = "⚠️ 3 秒没检测到声音输入：①确认 iPhone 侧边静音开关没开 ②如果插了耳机请拿掉 ③对着麦克风正常说话。说完点「✅ 说完了」即可。";
+        if (cSt && Voice.recCall) cSt.innerHTML = "⚠️ 3 秒没检测到声音输入。排查：①<b>戴了 AirPods/蓝牙耳机请先断开</b>（录音会走蓝牙麦克风，常常是静音）②iPhone 左侧静音拨片拨到非静音 ③对着<b>手机底部小孔</b>（充电口旁）说话。说完点「✅ 说完了」即可。";
       }
       var pcm = downsample16(ch, origRate, targetRate);
       Voice.recChunks.push(pcm);
