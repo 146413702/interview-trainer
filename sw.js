@@ -1,4 +1,4 @@
-var CACHE = "iv-trainer-v1";
+var CACHE = "iv-trainer-v2";
 self.addEventListener("install", function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) {
     return c.addAll(["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"]);
