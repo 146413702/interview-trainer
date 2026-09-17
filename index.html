@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.13</b></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.14</b></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1312,8 +1312,26 @@ function startRec() {
         if (Voice.recCall) { var cs2 = document.getElementById("callStatus"); if (cs2) cs2.innerHTML = "❌ " + msg; }
         else alert(msg);
       });
+    src.connect(sp);
+    // iOS Safari：音频图必须被"消费"才会拉取麦克风数据。用 0 音量 gain 连到 destination（消费但不外放，避免回声）
+    try {
+      var muteGain = ctx.createGain();
+      muteGain.gain.value = 0;
+      sp.connect(muteGain);
+      muteGain.connect(ctx.destination);
+    } catch (eM) {}
+    var silentFrames = 0;
     sp.onaudioprocess = function (e) {
-      var pcm = downsample16(e.inputBuffer.getChannelData(0), origRate, targetRate);
+      var ch = e.inputBuffer.getChannelData(0);
+      // 静音检测：峰值过低视为无声音输入（用于提示用户）
+      var peak = 0;
+      for (var k = 0; k < ch.length; k += 50) { var av = Math.abs(ch[k]); if (av > peak) peak = av; }
+      if (peak < 0.004) { silentFrames++; } else { silentFrames = 0; }
+      if (silentFrames === 35 && Voice.recOn) {
+        var cSt = document.getElementById("callStatus");
+        if (cSt && Voice.recCall) cSt.innerHTML = "⚠️ 3 秒没检测到声音输入：①确认 iPhone 侧边静音开关没开 ②如果插了耳机请拿掉 ③对着麦克风正常说话。说完点「✅ 说完了」即可。";
+      }
+      var pcm = downsample16(ch, origRate, targetRate);
       Voice.recChunks.push(pcm);
       var sess = Voice.xfSession;
       if (sess) {
@@ -1325,8 +1343,6 @@ function startRec() {
         }
       }
     };
-    src.connect(sp);
-    // 不把 sp 连到 destination：避免把麦克风声音外放（回声/啸叫），onaudioprocess 照常触发
     Voice.recOn = true; Voice.recSec = 0; Voice.recCall = Call.active;
     if (Voice.recCall) {
       var cst = document.getElementById("callStatus");
