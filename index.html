@@ -217,44 +217,40 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
 <div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage）</div>
 
 <script>
-/* ============ 语音配置一键导入：链接尾部 #qb_voice=<base64> 自动写入并提示 ============ */
+/* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
 (function () {
-  function doImport() {
-    try {
-      var h = location.hash || "";
-      if (h.indexOf("#qb_voice=") === 0) {
-        var b64 = h.substring(10);
-        var json = decodeURIComponent(escape(atob(b64)));
-        localStorage.setItem("qb_voice", json);
-        history.replaceState(null, "", location.pathname);
-        setTimeout(function () {
-          alert("✅ 语音配置已自动导入并保存！现在可以开始语音通话面试了。");
-        }, 300);
-      }
-    } catch (e) {}
+  function getParam(h, key) {
+    var s = (h || "").replace(/^#/, "");
+    var parts = s.split("&");
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].indexOf(key + "=") === 0) return parts[i].substring(key.length + 1);
+    }
+    return "";
   }
-  doImport();
-  window.addEventListener("hashchange", doImport);
+  try {
+    var v = getParam(location.hash, "qb_voice");
+    if (v) {
+      localStorage.setItem("qb_voice", decodeURIComponent(escape(atob(v))));
+      setTimeout(function () { alert("✅ 语音配置已自动导入并保存！现在可以开始语音通话面试了。"); }, 300);
+    }
+    var a = getParam(location.hash, "qb_ai");
+    if (a) {
+      localStorage.setItem("qb_ai", decodeURIComponent(escape(atob(a))));
+      setTimeout(function () { alert("✅ AI 配置已自动导入并保存！模拟面试将启用 AI 现场判题与追问，可一键收录新题。"); }, 600);
+    }
+    if (v || a) history.replaceState(null, "", location.pathname);
+  } catch (e) {}
 })();
-/* ============ AI 配置一键导入：链接尾部 #qb_ai=<base64> 自动写入并提示 ============ */
-(function () {
-  function doImport() {
-    try {
-      var h = location.hash || "";
-      if (h.indexOf("#qb_ai=") === 0) {
-        var b64 = h.substring(7);
-        var json = decodeURIComponent(escape(atob(b64)));
-        localStorage.setItem("qb_ai", json);
-        history.replaceState(null, "", location.pathname);
-        setTimeout(function () {
-          alert("✅ AI 配置已自动导入并保存！模拟面试将启用 AI 现场判题与追问，可一键收录新题。");
-        }, 300);
-      }
-    } catch (e) {}
-  }
-  doImport();
-  window.addEventListener("hashchange", doImport);
-})();
+function hashImportRetry() {
+  try {
+    var v = (function (h, key) { var s = (h || "").replace(/^#/, ""); var ps = s.split("&"); for (var i = 0; i < ps.length; i++) if (ps[i].indexOf(key + "=") === 0) return ps[i].substring(key.length + 1); return ""; })(location.hash, "qb_voice");
+    if (v && !localStorage.getItem("qb_voice")) { localStorage.setItem("qb_voice", decodeURIComponent(escape(atob(v)))); setTimeout(function () { alert("✅ 语音配置已自动导入并保存！"); }, 300); }
+    var a = (function (h, key) { var s = (h || "").replace(/^#/, ""); var ps = s.split("&"); for (var i = 0; i < ps.length; i++) if (ps[i].indexOf(key + "=") === 0) return ps[i].substring(key.length + 1); return ""; })(location.hash, "qb_ai");
+    if (a && !localStorage.getItem("qb_ai")) { localStorage.setItem("qb_ai", decodeURIComponent(escape(atob(a)))); setTimeout(function () { alert("✅ AI 配置已自动导入并保存！"); }, 600); }
+    if (v || a) history.replaceState(null, "", location.pathname);
+  } catch (e) {}
+}
+window.addEventListener("hashchange", hashImportRetry);
 var QDATA = QDATA || {};
 var CATS = [
   { id: "linux", icon: "🐧", name: "Linux 与 Shell" },
