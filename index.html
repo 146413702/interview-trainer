@@ -1601,10 +1601,11 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
   s.send = function (int16) {
     if (!s.ws || s.ws.readyState !== 1) return;
     var cp = new Int16Array(int16.length); cp.set(int16);
-    s.ws.send(JSON.stringify({ data: { status: 1, format: "audio/L16;rate=16000", encoding: "raw", seq: s.seq++, audio: arrayBufferToBase64(cp.buffer) } }));
+    // 讯飞 v2/iat 新版协议：data 帧不接受 seq 字段（旧协议才有），传了会报 10163
+    s.ws.send(JSON.stringify({ data: { status: 1, format: "audio/L16;rate=16000", encoding: "raw", audio: arrayBufferToBase64(cp.buffer) } }));
   };
   s.close = function () {
-    if (s.ws && s.ws.readyState === 1) s.ws.send(JSON.stringify({ data: { status: 2, format: "audio/L16;rate=16000", encoding: "raw", seq: s.seq++ } }));
+    if (s.ws && s.ws.readyState === 1) s.ws.send(JSON.stringify({ data: { status: 2, format: "audio/L16;rate=16000", encoding: "raw" } }));
   };
   s.kill = function () { try { if (s.ws) s.ws.close(); } catch (e) {} };
   return s;
