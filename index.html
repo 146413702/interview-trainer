@@ -4,6 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>运维工程师面试题库（基于简历定制）- 王毅寒</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="运维面试官">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#0F172A">
+<script>
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+</script>
 <style>
 :root {
   --bg: #F5F7FA; --surface: #FFFFFF; --text: #1A202C; --text-secondary: #4A5568;
