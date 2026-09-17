@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.14</b></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.15</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1303,11 +1303,13 @@ function startRec() {
         }
       },
       function (code) {
+        var dbg = "";
+        try { if (window.__dbgFrames && window.__dbgFrames.length) dbg = " [最近发送帧] " + window.__dbgFrames.join(" ｜ "); } catch (eD) {}
         var msg;
         if (code === "网络连接失败") {
           msg = "连接讯飞语音服务失败（已自动重试）。请检查：①当前网络能否访问外网（可切 WiFi/4G 再试）②是否开了代理/VPN/广告拦截。点「🔁 重试开麦」再试，仍不行可「📴 挂断」改用文字模式面试。";
         } else {
-          msg = "识别失败（" + code + "）。检查 Key 是否正确、是否实名、免费额度是否用完。";
+          msg = "识别失败（" + code + "）。检查 Key 是否正确、是否实名、免费额度是否用完。" + dbg;
         }
         if (Voice.recCall) { var cs2 = document.getElementById("callStatus"); if (cs2) cs2.innerHTML = "❌ " + msg; }
         else alert(msg);
@@ -1583,6 +1585,14 @@ function pickInterviewQuestions(n) {
   return { main: chosen, bonus: bonusPool };
 }
 /* ============ 流式语音识别（边说边出字） ============ */
+function dbgLogFrame(tag, frame) {
+  try {
+    window.__dbgFrames = window.__dbgFrames || [];
+    var s = JSON.stringify(frame);
+    window.__dbgFrames.push(tag + ":" + s.slice(0, 110));
+    if (window.__dbgFrames.length > 4) window.__dbgFrames.shift();
+  } catch (eD) {}
+}
 function xfOpenStream(cfg, onLive, onFinal, onErr) {
   var host = "iat-api.xfyun.cn", path = "/v2/iat";
   var enc = new TextEncoder();
@@ -1647,10 +1657,16 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
     if (!s.ws || s.ws.readyState !== 1) return;
     var cp = new Int16Array(int16.length); cp.set(int16);
     // 讯飞 v2/iat 新版协议：data 帧不接受 seq 字段（旧协议才有），传了会报 10163
-    s.ws.send(JSON.stringify({ data: { status: 1, format: "audio/L16;rate=16000", encoding: "raw", audio: arrayBufferToBase64(cp.buffer) } }));
+    var frame = { data: { status: 1, format: "audio/L16;rate=16000", encoding: "raw", audio: arrayBufferToBase64(cp.buffer) } };
+    dbgLogFrame("send", frame);
+    s.ws.send(JSON.stringify(frame));
   };
   s.close = function () {
-    if (s.ws && s.ws.readyState === 1) s.ws.send(JSON.stringify({ data: { status: 2, format: "audio/L16;rate=16000", encoding: "raw" } }));
+    if (s.ws && s.ws.readyState === 1) {
+      var frame2 = { data: { status: 2, format: "audio/L16;rate=16000", encoding: "raw" } };
+      dbgLogFrame("close", frame2);
+      s.ws.send(JSON.stringify(frame2));
+    }
   };
   s.kill = function () { try { if (s.ws) s.ws.close(); } catch (e) {} };
   return s;
@@ -2494,6 +2510,13 @@ QDATA["project"] = [
 ];
 </script><script>
 renderAll();
+// 协议自检：确认页面里没有旧版 seq 发送代码（用于手机端诊断）
+try {
+  var src = document.documentElement.outerHTML;
+  var bad = /data:\s*\{\s*status:\s*[12][^}]*seq/.test(src);
+  var pe = document.getElementById("protoChk");
+  if (pe) pe.textContent = bad ? "⚠️ 旧协议(含seq)" : "✓ 协议OK(无seq)";
+} catch (eP) {}
 </script>
 </body>
 </html>
