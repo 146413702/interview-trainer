@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.35</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.36</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1614,8 +1614,14 @@ function xfRecognize(cfg, pcm, done, logFn) {
         var d = JSON.parse(raw);
         if (d.code && d.code !== 0) { lg('✗ 讯飞错误码 ' + d.code); finish(); return; }
         if (d.data && d.data.result) {
-          var decoded = decodeURIComponent(escape(atob(d.data.result)));
-          var obj = JSON.parse(decoded);
+          // 新版协议 result 直接是 JSON 对象；老版是 base64 字符串——两种都兼容
+          var obj = d.data.result;
+          if (typeof obj === 'string') {
+            try {
+              var decoded = decodeURIComponent(escape(atob(obj)));
+              obj = JSON.parse(decoded);
+            } catch (eD) { obj = null; }
+          }
           if (obj.ws) {
             for (var i = 0; i < obj.ws.length; i++) {
               var cw = obj.ws[i].cw;
