@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.29</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.30</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1323,9 +1323,16 @@ function startRec() {
       // ===== MediaRecorder 录音（iOS 首选：绕开 Web Audio 全链路，解决 iOS 麦克风静音）=====
       Voice.recMode = "mr"; Voice.recFrames = 0; Voice.recPeak = 0; Voice.lastAudio = null; Voice.lastAudioMeta = null; Voice.lastBlob = null; Voice.retrying = false; stopPlayRec();
       try {
-        var mimeMR = "audio/webm";
-        try { if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mimeMR = "audio/webm;codecs=opus"; } catch (eM2) {}
+        // 首选 mp4(AAC)——iOS 原生支持解码，decodeAudioData 可正确解析，且可直传 lfasr
+        var mimeMR = "audio/mp4";
+        try {
+          if (!(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/mp4"))) {
+            mimeMR = "audio/webm";
+            if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mimeMR = "audio/webm;codecs=opus";
+          }
+        } catch (eM2) { mimeMR = "audio/webm"; }
         Voice.mr = new MediaRecorder(stream, { mimeType: mimeMR });
+        Voice.mrMime = mimeMR;
         Voice.mrChunks = [];
         Voice.mr.ondataavailable = function (e) { if (e.data && e.data.size) Voice.mrChunks.push(e.data); };
         Voice.mr.start(250);
@@ -1529,9 +1536,12 @@ function stopRec(cb) {
           }
         }).catch(function (err) {
           try { dctx.close(); } catch (eC2) {}
-          var emsg = "❌ 录音解码失败（该浏览器不支持 webm 解码" + (err && err.message ? "：" + err.message : "") + "）。可「📴 挂断」改用文字模式面试，或用手机输入法语音键。";
           if (wasCall) {
-            var cse = document.getElementById("callStatus"); if (cse) cse.innerHTML = emsg;
+            var cse = document.getElementById("callStatus");
+            if (cse) {
+              var dbtn = Voice.lastBlob ? '<br><button style="margin:8px 6px 0 0;padding:10px 16px;border:none;border-radius:12px;background:#4A6CF7;color:#fff;font-size:15px;font-weight:600;" onclick="playLastRecording()">🔊 播放原始录音</button><button style="margin:8px 6px 0 0;padding:10px 16px;border:none;border-radius:12px;background:#F59E0B;color:#fff;font-size:15px;font-weight:600;" onclick="retryWithAudioElement()">🔁 系统解码重试识别</button><button style="margin-top:8px;padding:10px 16px;border:none;border-radius:12px;background:#22C55E;color:#fff;font-size:15px;font-weight:600;" onclick="downloadLastRecording()">📥 下载录音给我分析</button>' : "";
+              cse.innerHTML = "❌ 录音解码失败（该浏览器不支持 webm 解码" + (err && err.message ? "：" + err.message : "") + "）。" + dbtn + "<br>「🔁 系统解码重试识别」会绕开失败的解码器重新处理；还不行就「📴 挂断」用文字模式或手机输入法语音键。";
+            }
             var mbe = document.getElementById("callMainBtn"); if (mbe) { mbe.textContent = "🔁 重试开麦"; mbe.disabled = false; }
           } else if (cb) cb("");
         });
@@ -2118,6 +2128,17 @@ function encodeWav(samples, rate) {
   return buf;
 }
 function downloadLastRecording() {
+  // 优先下载原始录音 blob（mp4/webm 原样），解码成功时才导出 wav
+  if (Voice.lastBlob) {
+    var a0 = document.createElement("a");
+    a0.href = URL.createObjectURL(Voice.lastBlob);
+    var ext = (Voice.lastBlob.type || "webm").indexOf("mp4") >= 0 ? "m4a" : "webm";
+    a0.download = "rec_" + new Date().getTime() + "." + ext;
+    document.body.appendChild(a0); a0.click(); document.body.removeChild(a0);
+    var st0 = document.getElementById("callStatus");
+    if (st0) st0.innerHTML = "📥 已生成原始录音文件（" + ext + " 格式）。把它发给我（聊天窗口直接传文件），我来分析音频到底正不正常。";
+    return;
+  }
   var ab = Voice.lastAudio;
   if (!ab) return;
   var sr = ab.sampleRate;
