@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.23</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.24</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1381,7 +1381,7 @@ function startRec() {
       }
     };
     }
-    Voice.recOn = true; Voice.recSec = 0; Voice.recCall = Call.active;
+    Voice.recOn = true; Voice.recSec = 0; Voice.recCall = Call.active; Voice.recT0 = Date.now();
     if (Voice.recCall) {
       var cst = document.getElementById("callStatus");
       if (cst) cst.innerHTML = '🎙️ 正在听你说…说完点「✅ 说完了」（AI 不会打断你）';
@@ -1418,7 +1418,8 @@ function startRec() {
     stopSpeak();
     Voice.recTimer = setInterval(function () {
       if (!Voice.recOn) return;
-      Voice.recSec++;
+      // 用真实时间计算秒数（iOS Safari 会把 1s 定时器节流成 2s 甚至更慢，直接计数会跳秒）
+      Voice.recSec = Math.floor((Date.now() - Voice.recT0) / 1000);
       if (Voice.recCall) {
         var b2 = document.getElementById("callMainBtn");
         if (b2) b2.textContent = "✅ 说完了 " + Voice.recSec + "s";
@@ -1426,7 +1427,7 @@ function startRec() {
         var b3 = document.getElementById("ivMic");
         if (b3) b3.innerHTML = "⏺ " + Voice.recSec + "s";
       }
-    }, 1000);
+    }, 250);
   }).catch(onFail);
 }
 function stopRec(cb) {
@@ -1464,7 +1465,22 @@ function stopRec(cb) {
           var ch = ab.getChannelData(0);
           var sr = ab.sampleRate;
           var pcm = downsample16(ch, sr, 16000);
+          // 解码峰值诊断：0=麦克风没拾到音（设备问题）；>0=音频有声音（问题在识别侧）
+          var mPeak = 0;
+          for (var mi = 0; mi < pcm.length; mi += 80) { var avm = Math.abs(pcm[mi]); if (avm > mPeak) mPeak = avm; }
           if (wasCall) {
+            if (ab.duration < 1.5) {
+              var csR = document.getElementById("callStatus");
+              if (csR) csR.innerHTML = "⚠️ 这段录音只有 " + Math.round(ab.duration) + " 秒，太短了（讯飞会判无效）。请<b>完整说一段话</b>（比如把答案完整说出来）再点「✅ 说完了」。";
+              var mbR = document.getElementById("callMainBtn"); if (mbR) { mbR.textContent = "🔁 重试开麦"; mbR.disabled = false; }
+              return;
+            }
+            var csP = document.getElementById("callStatus");
+            if (csP) csP.innerHTML = "🧠 正在识别…（解码峰值 " + (mPeak >= 0.01 ? mPeak.toFixed(3) : "0.000") + " · 时长 " + Math.round(ab.duration) + "s）";
+            if (mPeak < 0.01) {
+              var csQ = document.getElementById("callStatus");
+              if (csQ) csQ.innerHTML = "⚠️ 这段录音是<b>静音</b>（峰值 0.000）——麦克风还是没拾到音。排查：①<b>AirPods/蓝牙耳机先断开</b> ②iPhone 左侧静音拨片 ③对准<b>手机底部小孔</b>说话。说完点「✅ 说完了」重试。";
+            }
             xfRecognize(getVoiceCfg(), pcm, function (t) { onCallRecognized(t); });
           } else if (cb) {
             xfRecognize(getVoiceCfg(), pcm, cb);
@@ -1565,7 +1581,8 @@ function xfRecognize(cfg, pcm, done) {
     var url = "wss://" + host + path + "?authorization=" + encodeURIComponent(arrayBufferToBase64(enc.encode(authOrigin).buffer)) + "&date=" + encodeURIComponent(date) + "&host=" + host;
     var ws = new WebSocket(url);
     var resultText = "", finished = false;
-    var finish = function () { if (!finished) { finished = true; try { ws.close(); } catch (e) {} done(resultText.trim()); } };
+    var watchdog = setTimeout(function () { finish(); }, 25000);
+    var finish = function () { if (!finished) { finished = true; clearTimeout(watchdog); try { ws.close(); } catch (e) {} done(resultText.trim()); } };
     ws.onopen = function () {
       var fmt = "audio/L16;rate=16000", enc2 = "raw";
       ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
