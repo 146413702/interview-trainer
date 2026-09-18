@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.25</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.26</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1231,6 +1231,22 @@ function downsample16(inData, origRate, targetRate) {
   }
   return out;
 }
+// 自动增益：把低音量录音放大到合适响度（讯飞对过小音量识别率极低）
+function normalizePcm(pcm, maxGain) {
+  var pk = 0;
+  for (var i = 0; i < pcm.length; i += 50) { var a = Math.abs(pcm[i]); if (a > pk) pk = a; }
+  if (pk < 100) return { pcm: pcm, gain: 0 }; // 几乎无声，不处理
+  var target = 16000;
+  var g = target / pk;
+  if (g > (maxGain || 12)) g = (maxGain || 12);
+  if (g < 1.05) return { pcm: pcm, gain: 1 };
+  var out = new Int16Array(pcm.length);
+  for (var i = 0; i < pcm.length; i++) {
+    var v = pcm[i] * g;
+    out[i] = v > 32767 ? 32767 : (v < -32768 ? -32768 : v);
+  }
+  return { pcm: out, gain: g };
+}
 // 裁剪前导/尾随静音（按 50ms 块能量判断），返回裁剪后的 PCM 或 null（无有效语音）
 function trimSilence16(pcm, rate) {
   var t = 200; // 阈值：约 0.006 幅度
@@ -1494,16 +1510,19 @@ function stopRec(cb) {
             } else if (cb) cb("");
             return;
           }
+          // 自动增益：手机录音音量普遍偏小，放大后讯飞识别率大幅提升
+          var norm = normalizePcm(trimmed, 12);
+          var sendPcm = norm.pcm;
           var mPeak = 0;
-          for (var mi = 0; mi < trimmed.length; mi += 80) { var avm = Math.abs(trimmed[mi]); if (avm > mPeak) mPeak = avm; }
+          for (var mi = 0; mi < sendPcm.length; mi += 80) { var avm = Math.abs(sendPcm[mi]); if (avm > mPeak) mPeak = avm; }
           Voice.mrPeak = mPeak;
-          var durS = Math.round(trimmed.length / 16000);
+          var durS = Math.round(sendPcm.length / 16000);
           if (wasCall) {
             var csP = document.getElementById("callStatus");
-            if (csP) csP.innerHTML = "🧠 正在识别…（有效语音 " + durS + "s · 峰值 " + (mPeak >= 0.01 ? mPeak.toFixed(3) : "0.000") + "）";
-            xfRecognize(getVoiceCfg(), trimmed, function (t) { onCallRecognized(t); });
+            if (csP) csP.innerHTML = "🧠 正在识别…（有效语音 " + durS + "s · 峰值 " + (mPeak >= 0.01 ? mPeak.toFixed(3) : "0.000") + (norm.gain > 1 ? " · 已放大" + norm.gain.toFixed(1) + "倍" : "") + "）";
+            xfRecognize(getVoiceCfg(), sendPcm, function (t) { onCallRecognized(t); });
           } else if (cb) {
-            xfRecognize(getVoiceCfg(), trimmed, cb);
+            xfRecognize(getVoiceCfg(), sendPcm, cb);
           }
         }).catch(function (err) {
           try { dctx.close(); } catch (eC2) {}
