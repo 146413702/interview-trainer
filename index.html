@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.33</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.34</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1498,8 +1498,8 @@ function stopRec(cb) {
         else if (cb) cb("");
         return;
       }
-      // 直接走 <audio> 系统解码抓取（iOS 的 decodeAudioData 不支持 MediaRecorder 的 fMP4 格式，全程绕开）
-      audioGrabAndRecognize(blob, wasCall, cb);
+      // 主路径：修复 fMP4 头 → 标准 MP4 → decodeAudioData（纯解码无需播放权限，v7.34）
+      decodeRecognize(blob, wasCall, cb);
     };
     try { Voice.mr.stop(); } catch (eS) {}
     try { if (Voice.recStream) Voice.recStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
@@ -2007,6 +2007,57 @@ function playLastDecoded() {
   }).catch(function () {});
 }
 // 关键方案：<audio> 元素播放原始 webm，经 MediaElementSource 抓 PCM 再发讯飞（绕开 iOS decodeAudioData 音量丢失）
+// 主识别路径：修复 fMP4 头后直接用 decodeAudioData 解码（iOS 原生支持 mp4/aac，无需 <audio> 播放，规避自动播放限制）
+function decodeRecognize(blob, wasCall, cb) {
+  if (!blob) { if (wasCall) { var st0 = document.getElementById('callStatus'); if (st0) st0.innerHTML = '没有保存的录音，请先重新录一次。'; } else if (cb) cb(''); return; }
+  if (Voice.retrying) return;
+  Voice.retrying = true;
+  var tip = function (html) { if (wasCall) { var st = document.getElementById('callStatus'); if (st) st.innerHTML = html; } else { var tp = document.getElementById('ivMicTip'); if (tp) tp.innerHTML = html; } };
+  var fr = new FileReader();
+  fr.onload = function () {
+    var fixed = fixFmp4Buf(fr.result);
+    var DCtx = window.AudioContext || window.webkitAudioContext;
+    var dctx = new DCtx();
+    try { dctx.decodeAudioData(fixed).then(function (ab) {
+      try { dctx.close(); } catch (eC) {}
+      Voice.retrying = false;
+      var ch = ab.getChannelData(0);
+      var sr = ab.sampleRate;
+      var pcm16 = downsample16(ch, sr, 16000);
+      var trimmed = trimSilence16(pcm16, 16000);
+      if (!trimmed) {
+        var tPk = 0;
+        for (var ti = 0; ti < pcm16.length; ti += 50) { var tA = Math.abs(pcm16[ti]); if (tA > tPk) tPk = tA; }
+        tip('⚠️ 录音里检测不到有效语音（样本 ' + pcm16.length + ' · 峰值 ' + tPk + ' ≈ ' + (tPk / 32767).toFixed(3) + '）。请靠近麦克风、环境安静、完整说一段话再试，或「📴 挂断」用文字模式。');
+        if (wasCall) { var mbN = document.getElementById('callMainBtn'); if (mbN) { mbN.textContent = '🔁 重试开麦'; mbN.disabled = false; } } else if (cb) cb('');
+        return;
+      }
+      var norm = normalizePcm(trimmed, 12);
+      var mPeak = 0;
+      for (var mi = 0; mi < norm.pcm.length; mi += 80) { var avm = Math.abs(norm.pcm[mi]); if (avm > mPeak) mPeak = avm; }
+      Voice.mrPeak = mPeak;
+      tip('🧠 正在识别…（有效语音 ' + Math.round(norm.pcm.length / 16000) + 's · 峰值 ' + (mPeak >= 0.01 ? mPeak.toFixed(3) : '0.000') + (norm.gain > 1 ? ' · 放大' + norm.gain.toFixed(1) + '倍' : '') + '）');
+      if (wasCall) xfRecognize(getVoiceCfg(), norm.pcm, function (t) { onCallRecognized(t); });
+      else if (cb) xfRecognize(getVoiceCfg(), norm.pcm, cb);
+    }).catch(function (err) {
+      try { dctx.close(); } catch (eC2) {}
+      Voice.retrying = false;
+      if (wasCall) {
+        var cse = document.getElementById('callStatus');
+        if (cse) {
+          var dbtn = Voice.lastBlob ? '<br><button style="margin:8px 6px 0 0;padding:10px 16px;border:none;border-radius:12px;background:#4A6CF7;color:#fff;font-size:15px;font-weight:600;" onclick="playLastRecording()">🔊 播放原始录音</button><button style="margin:8px 6px 0 0;padding:10px 16px;border:none;border-radius:12px;background:#F59E0B;color:#fff;font-size:15px;font-weight:600;" onclick="retryWithAudioElement()">🔁 系统播放抓取重试</button><button style="margin-top:8px;padding:10px 16px;border:none;border-radius:12px;background:#22C55E;color:#fff;font-size:15px;font-weight:600;" onclick="downloadLastRecording()">📥 下载录音给我分析</button>' : '';
+          cse.innerHTML = '❌ 解码失败（' + (err && err.message ? err.message : '未知错误') + '）。' + dbtn + '<br>可点「🔁 系统播放抓取重试」（若播放被拦截请检查静音拨片/音量后重试），或「📴 挂断」用文字模式。';
+        }
+        var mbe = document.getElementById('callMainBtn'); if (mbe) { mbe.textContent = '🔁 重试开麦'; mbe.disabled = false; }
+      } else if (cb) cb('');
+    }); } catch (eSync) {
+      Voice.retrying = false;
+      if (wasCall) onCallRecognized(''); else if (cb) cb('');
+    }
+  };
+  fr.onerror = function () { Voice.retrying = false; if (wasCall) onCallRecognized(''); else if (cb) cb(''); };
+  fr.readAsArrayBuffer(blob);
+}
 // 修复 iOS MediaRecorder 的 fMP4：把藏在文件中间的 ftyp/moov 搬到开头（否则 <audio> 只解码开头一小段，识别就只剩几秒）
 function fixFmp4Buf(buf) {
   try {
