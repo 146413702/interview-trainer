@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.27</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.28</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -2017,13 +2017,47 @@ function playLastRecording() {
   try { if (Voice.playCtx) Voice.playCtx.close(); } catch (eP) {}
   var ctx = new Ctx();
   Voice.playCtx = ctx;
-  var src = ctx.createBufferSource();
-  src.buffer = ab;
-  src.connect(ctx.destination);
-  src.start(0);
-  src.onended = function () { try { ctx.close(); } catch (eP2) {} Voice.playCtx = null; };
+  // iOS：必须 resume，否则 suspended 无声
+  var pr = ctx.resume ? ctx.resume() : Promise.resolve();
+  Promise.resolve(pr).then(function () {
+    var src = ctx.createBufferSource();
+    src.buffer = ab;
+    src.connect(ctx.destination);
+    src.start(0);
+    src.onended = function () { try { ctx.close(); } catch (eP2) {} Voice.playCtx = null; };
+  }).catch(function () {
+    var st2 = document.getElementById("callStatus");
+    if (st2) st2.innerHTML = "⚠️ 播放被系统拦截。请检查：①<b>iPhone 左侧静音拨片</b>（静音时播放无声）②音量调大 ③再点一次播放。";
+  });
   var st = document.getElementById("callStatus");
-  if (st) st.innerHTML = "🔊 正在播放刚才的录音…听一下是不是你的声音（清晰人声=解码正常；噪音/失真=解码问题）。播完再试或挂断。";
+  if (st) st.innerHTML = "🔊 正在播放刚才的录音…请<b>听清楚</b>：是你的说话声=解码正常；只有电流声/沙沙声/无声=解码损坏。播完告诉我听到什么。";
+}
+// 把录音导出为 WAV 文件（下载后可直接发给我分析）
+function encodeWav(samples, rate) {
+  var buf = new ArrayBuffer(44 + samples.length * 2);
+  var v = new DataView(buf);
+  function wstr(off, s) { for (var i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); }
+  wstr(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  wstr(36, "data"); v.setUint32(40, samples.length * 2, true);
+  for (var i = 0; i < samples.length; i++) v.setInt16(44 + i * 2, samples[i], true);
+  return buf;
+}
+function downloadLastRecording() {
+  var ab = Voice.lastAudio;
+  if (!ab) return;
+  var sr = ab.sampleRate;
+  var ch = ab.getChannelData(0);
+  var pcm16 = downsample16(ch, sr, 16000);
+  var wav = encodeWav(pcm16, 16000);
+  var blob = new Blob([wav], { type: "audio/wav" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "rec_" + new Date().getTime() + ".wav";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  var st3 = document.getElementById("callStatus");
+  if (st3) st3.innerHTML = "📥 已生成录音文件（" + Math.round(pcm16.length / 16000) + " 秒 · 16kHz WAV）。把它发给我（聊天窗口直接传文件），我来分析音频到底正不正常。";
 }
 function stopPlayRec() { try { if (Voice.playCtx) Voice.playCtx.close(); } catch (eS) {} Voice.playCtx = null; }
 function onCallRecognized(txt) {
@@ -2037,8 +2071,8 @@ function onCallRecognized(txt) {
       var pkTxt;
       if (Voice.mrPeak) {
         var meta = Voice.lastAudioMeta || {};
-        var playBtn = Voice.lastAudio ? '<br><button style="margin-top:8px;padding:10px 16px;border:none;border-radius:12px;background:#4A6CF7;color:#fff;font-size:15px;font-weight:600;" onclick="playLastRecording()">🔊 播放刚才的录音（自检：听是不是你的声音）</button>' : "";
-        pkTxt = "（录音有效语音峰值 " + Voice.mrPeak.toFixed(3) + " · 解码采样率 " + (meta.sr || "?") + "Hz · 原始时长 " + Math.round((meta.dur || 0)) + "s" + (meta.gain > 1 ? " · 放大" + meta.gain.toFixed(1) + "倍" : "") + "——麦克风拾音正常，但讯飞没识别出文字。请先点「🔊 播放刚才的录音」听一下内容是否正常，再重试或改用文字模式）";
+        var playBtn = Voice.lastAudio ? '<br><button style="margin:8px 6px 0 0;padding:10px 16px;border:none;border-radius:12px;background:#4A6CF7;color:#fff;font-size:15px;font-weight:600;" onclick="playLastRecording()">🔊 播放自检</button><button style="margin-top:8px;padding:10px 16px;border:none;border-radius:12px;background:#22C55E;color:#fff;font-size:15px;font-weight:600;" onclick="downloadLastRecording()">📥 下载录音给我分析</button>' : "";
+        pkTxt = "（录音有效语音峰值 " + Voice.mrPeak.toFixed(3) + " · 解码采样率 " + (meta.sr || "?") + "Hz · 原始时长 " + Math.round((meta.dur || 0)) + "s" + (meta.gain > 1 ? " · 放大" + meta.gain.toFixed(1) + "倍" : "") + "——麦克风拾音正常，但讯飞没识别出文字。请点「🔊 播放自检」听内容是否正常；或「📥 下载录音给我分析」把文件发我）";
       } else {
         pkTxt = "（最后峰值 " + (lastPk >= 0.01 ? lastPk.toFixed(3) : "0.000") + "——" + (lastPk >= 0.01 ? "麦克风有拾音，可能识别问题" : "麦克风几乎没拾到音，请检查设备/靠近麦克风说话") + "）";
       }
