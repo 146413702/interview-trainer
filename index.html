@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.22</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.23</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1280,6 +1280,24 @@ function startRec() {
     Voice.recStream = stream;
     // iOS 关键：AudioContext 必须在用户点击手势的同步栈内创建并 resume（getUserMedia 回调是异步栈，iOS 会拒绝 resume，
     // 导致 ctx 永远 suspended、onaudioprocess 不触发、讯飞收不到音频卡"识别中"）。这里在 startRec 开头已预建，直接复用。
+    var useMR = false;
+    try {
+      useMR = !!(window.MediaRecorder && (navigator.userAgent.indexOf("iPhone") >= 0 || navigator.userAgent.indexOf("iPad") >= 0 || (MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported("audio/webm;codecs=opus") || MediaRecorder.isTypeSupported("audio/webm")))));
+    } catch (eMR) {}
+    if (useMR) {
+      // ===== MediaRecorder 录音（iOS 首选：绕开 Web Audio 全链路，解决 iOS 麦克风静音）=====
+      Voice.recMode = "mr"; Voice.recFrames = 0; Voice.recPeak = 0;
+      try {
+        var mimeMR = "audio/webm";
+        try { if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mimeMR = "audio/webm;codecs=opus"; } catch (eM2) {}
+        Voice.mr = new MediaRecorder(stream, { mimeType: mimeMR });
+        Voice.mrChunks = [];
+        Voice.mr.ondataavailable = function (e) { if (e.data && e.data.size) Voice.mrChunks.push(e.data); };
+        Voice.mr.start(250);
+        Voice.recStream = stream;
+      } catch (eMR2) { useMR = false; Voice.mr = null; Voice.mrChunks = null; }
+    }
+    if (!useMR) {
     var ctx = Voice.recCtxPre || (function () { var C2 = window.AudioContext || window.webkitAudioContext; return new C2(); })();
     if (ctx.state === "suspended") { try { var rp = ctx.resume(); if (rp && rp.catch) rp.catch(function () {}); } catch (eR) {} }
     Voice.recCtx = ctx;
@@ -1362,6 +1380,7 @@ function startRec() {
         }
       }
     };
+    }
     Voice.recOn = true; Voice.recSec = 0; Voice.recCall = Call.active;
     if (Voice.recCall) {
       var cst = document.getElementById("callStatus");
@@ -1377,6 +1396,10 @@ function startRec() {
         Voice.recDiagTimer = setInterval(function () {
           if (!Voice.recOn || !Voice.recCall) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; return; }
           var csd = document.getElementById("callStatus"); if (!csd) return;
+          if (Voice.recMode === "mr") {
+            csd.innerHTML = "🎙️ 录音中 [MR 模式 · " + (Voice.recSec || 0) + "s]（MediaRecorder，说完点「✅ 说完了」）";
+            return;
+          }
           var sr = "?", st = "?";
           try { if (Voice.recCtx) { sr = Voice.recCtx.sampleRate; st = Voice.recCtx.state; } } catch (eDg) {}
           var wsSt = (Voice.xfSession && Voice.xfSession.ws) ? Voice.xfSession.ws.readyState : "?";
@@ -1411,6 +1434,58 @@ function stopRec(cb) {
   var wasOn = Voice.recOn;
   Voice.recOn = false;
   Voice.recCall = false;
+  // ===== MediaRecorder 路径：录完 → 解码 → 一次性识别（iOS 首选）=====
+  if (Voice.mr && Voice.mr.state === "recording") {
+    if (wasCall) {
+      var cwM = document.getElementById("callWave"); if (cwM) cwM.classList.remove("on");
+      var cstM = document.getElementById("callStatus"); if (cstM) cstM.innerHTML = "🧠 正在解析录音并识别…";
+      var mbM = document.getElementById("callMainBtn"); if (mbM) { mbM.textContent = "🧠 识别中…"; mbM.disabled = true; }
+    } else {
+      var tipM = document.getElementById("ivMicTip");
+      if (tipM) tipM.innerHTML = "🧠 正在解析录音并识别…";
+    }
+    if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
+    if (Voice.recTimer) { clearInterval(Voice.recTimer); Voice.recTimer = null; }
+    Voice.mr.onstop = function () {
+      var blob = new Blob(Voice.mrChunks || [], { type: Voice.mr.mimeType || "audio/webm" });
+      Voice.mr = null; Voice.mrChunks = null; Voice.recMode = null;
+      if (blob.size < 600) {
+        if (wasCall) onCallRecognized("");
+        else if (cb) cb("");
+        return;
+      }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var arr = fr.result;
+        var DCtx = window.AudioContext || window.webkitAudioContext;
+        var dctx = new DCtx();
+        dctx.decodeAudioData(arr).then(function (ab) {
+          try { dctx.close(); } catch (eC) {}
+          var ch = ab.getChannelData(0);
+          var sr = ab.sampleRate;
+          var pcm = downsample16(ch, sr, 16000);
+          if (wasCall) {
+            xfRecognize(getVoiceCfg(), pcm, function (t) { onCallRecognized(t); });
+          } else if (cb) {
+            xfRecognize(getVoiceCfg(), pcm, cb);
+          }
+        }).catch(function (err) {
+          try { dctx.close(); } catch (eC2) {}
+          var emsg = "❌ 录音解码失败（该浏览器不支持 webm 解码" + (err && err.message ? "：" + err.message : "") + "）。可「📴 挂断」改用文字模式面试，或用手机输入法语音键。";
+          if (wasCall) {
+            var cse = document.getElementById("callStatus"); if (cse) cse.innerHTML = emsg;
+            var mbe = document.getElementById("callMainBtn"); if (mbe) { mbe.textContent = "🔁 重试开麦"; mbe.disabled = false; }
+          } else if (cb) cb("");
+        });
+      };
+      fr.onerror = function () { if (wasCall) onCallRecognized(""); else if (cb) cb(""); };
+      fr.readAsArrayBuffer(blob);
+    };
+    try { Voice.mr.stop(); } catch (eS) {}
+    try { if (Voice.recStream) Voice.recStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+    Voice.recStream = null;
+    return;
+  }
   if (!wasOn) {
     if (wasCall) {
       var csX = document.getElementById("callStatus");
@@ -1723,6 +1798,8 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
   return s;
 }
 function voiceCleanup() {
+  if (Voice.mr) { try { if (Voice.mr.state === "recording") Voice.mr.stop(); } catch (eMRc) {} Voice.mr = null; }
+  Voice.mrChunks = null; Voice.recMode = null;
   if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
   if (Voice.xfTimer) { clearInterval(Voice.xfTimer); Voice.xfTimer = null; }
   if (Voice.xfSession) { try { Voice.xfSession.kill(); } catch (e) {} Voice.xfSession = null; }
