@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.26</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.27</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1321,7 +1321,7 @@ function startRec() {
     } catch (eMR) {}
     if (useMR) {
       // ===== MediaRecorder 录音（iOS 首选：绕开 Web Audio 全链路，解决 iOS 麦克风静音）=====
-      Voice.recMode = "mr"; Voice.recFrames = 0; Voice.recPeak = 0;
+      Voice.recMode = "mr"; Voice.recFrames = 0; Voice.recPeak = 0; Voice.lastAudio = null; Voice.lastAudioMeta = null; stopPlayRec();
       try {
         var mimeMR = "audio/webm";
         try { if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mimeMR = "audio/webm;codecs=opus"; } catch (eM2) {}
@@ -1516,6 +1516,8 @@ function stopRec(cb) {
           var mPeak = 0;
           for (var mi = 0; mi < sendPcm.length; mi += 80) { var avm = Math.abs(sendPcm[mi]); if (avm > mPeak) mPeak = avm; }
           Voice.mrPeak = mPeak;
+          Voice.lastAudio = ab; // 保存解码结果，供失败后播放自检
+          Voice.lastAudioMeta = { sr: sr, dur: ab.duration, gain: norm.gain };
           var durS = Math.round(sendPcm.length / 16000);
           if (wasCall) {
             var csP = document.getElementById("callStatus");
@@ -1854,6 +1856,7 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
   return s;
 }
 function voiceCleanup() {
+  stopPlayRec();
   if (Voice.mr) { try { if (Voice.mr.state === "recording") Voice.mr.stop(); } catch (eMRc) {} Voice.mr = null; }
   Voice.mrChunks = null; Voice.recMode = null;
   if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
@@ -2006,6 +2009,23 @@ function callMainAction() {
 function callSubAction() {
   if (Call.state === "confirming") callEnter("listening");
 }
+// 播放刚才的录音（解码自检：听是不是自己的声音）
+function playLastRecording() {
+  var ab = Voice.lastAudio;
+  if (!ab) return;
+  var Ctx = window.AudioContext || window.webkitAudioContext;
+  try { if (Voice.playCtx) Voice.playCtx.close(); } catch (eP) {}
+  var ctx = new Ctx();
+  Voice.playCtx = ctx;
+  var src = ctx.createBufferSource();
+  src.buffer = ab;
+  src.connect(ctx.destination);
+  src.start(0);
+  src.onended = function () { try { ctx.close(); } catch (eP2) {} Voice.playCtx = null; };
+  var st = document.getElementById("callStatus");
+  if (st) st.innerHTML = "🔊 正在播放刚才的录音…听一下是不是你的声音（清晰人声=解码正常；噪音/失真=解码问题）。播完再试或挂断。";
+}
+function stopPlayRec() { try { if (Voice.playCtx) Voice.playCtx.close(); } catch (eS) {} Voice.playCtx = null; }
 function onCallRecognized(txt) {
   if (!Call.active) return;
   if (Voice.recDiagTimer) { clearInterval(Voice.recDiagTimer); Voice.recDiagTimer = null; }
@@ -2016,11 +2036,13 @@ function onCallRecognized(txt) {
       var lastPk = (Voice.mrPeak || Voice.recPeak || 0);
       var pkTxt;
       if (Voice.mrPeak) {
-        pkTxt = "（录音有效语音峰值 " + Voice.mrPeak.toFixed(3) + "——麦克风拾音正常，但讯飞没识别出文字。可再试一次，或「📴 挂断」用文字模式）";
+        var meta = Voice.lastAudioMeta || {};
+        var playBtn = Voice.lastAudio ? '<br><button style="margin-top:8px;padding:10px 16px;border:none;border-radius:12px;background:#4A6CF7;color:#fff;font-size:15px;font-weight:600;" onclick="playLastRecording()">🔊 播放刚才的录音（自检：听是不是你的声音）</button>' : "";
+        pkTxt = "（录音有效语音峰值 " + Voice.mrPeak.toFixed(3) + " · 解码采样率 " + (meta.sr || "?") + "Hz · 原始时长 " + Math.round((meta.dur || 0)) + "s" + (meta.gain > 1 ? " · 放大" + meta.gain.toFixed(1) + "倍" : "") + "——麦克风拾音正常，但讯飞没识别出文字。请先点「🔊 播放刚才的录音」听一下内容是否正常，再重试或改用文字模式）";
       } else {
         pkTxt = "（最后峰值 " + (lastPk >= 0.01 ? lastPk.toFixed(3) : "0.000") + "——" + (lastPk >= 0.01 ? "麦克风有拾音，可能识别问题" : "麦克风几乎没拾到音，请检查设备/靠近麦克风说话") + "）";
       }
-      st.innerHTML = "😅 没识别到声音" + pkTxt + "。点「🔁 重试开麦」靠近麦克风大声说一次；仍不行就「📴 挂断」改用文字模式。";
+      st.innerHTML = "😅 没识别到声音" + pkTxt + playBtn + "<br>点「🔁 重试开麦」靠近麦克风大声说一次；仍不行就「📴 挂断」改用文字模式。";
     }
     var mb = document.getElementById("callMainBtn");
     if (mb) { mb.textContent = "🔁 重试开麦"; mb.disabled = false; }
