@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.24</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.25</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1231,6 +1231,25 @@ function downsample16(inData, origRate, targetRate) {
   }
   return out;
 }
+// 裁剪前导/尾随静音（按 50ms 块能量判断），返回裁剪后的 PCM 或 null（无有效语音）
+function trimSilence16(pcm, rate) {
+  var t = 200; // 阈值：约 0.006 幅度
+  var blk = Math.floor(rate * 0.05); // 50ms
+  var n = pcm.length, nb = Math.ceil(n / blk);
+  var active = new Array(nb);
+  for (var i = 0; i < nb; i++) {
+    var pk = 0, base = i * blk, e2 = Math.min(n, base + blk);
+    for (var j = base; j < e2; j++) { var av = Math.abs(pcm[j]); if (av > pk) pk = av; }
+    active[i] = pk > t;
+  }
+  var s = -1, e2i = -1;
+  for (var i = 0; i < nb; i++) if (active[i]) { s = i; break; }
+  for (var i = nb - 1; i >= 0; i--) if (active[i]) { e2i = i; break; }
+  if (s < 0) return null;
+  var sIdx = s * blk, eIdx = Math.min(n, (e2i + 1) * blk);
+  if (eIdx - sIdx < rate * 0.4) return null; // 有效语音不足 0.4 秒
+  return pcm.subarray(sIdx, eIdx);
+}
 function concatPcm(chunks) {
   var total = 0, i;
   for (i = 0; i < chunks.length; i++) total += chunks[i].length;
@@ -1464,26 +1483,27 @@ function stopRec(cb) {
           try { dctx.close(); } catch (eC) {}
           var ch = ab.getChannelData(0);
           var sr = ab.sampleRate;
-          var pcm = downsample16(ch, sr, 16000);
-          // 解码峰值诊断：0=麦克风没拾到音（设备问题）；>0=音频有声音（问题在识别侧）
+          var pcm16 = downsample16(ch, sr, 16000);
+          // 裁剪前导/尾随静音：避免开头静音让讯飞 VAD 直接判空
+          var trimmed = trimSilence16(pcm16, 16000);
+          if (!trimmed) {
+            if (wasCall) {
+              var csN = document.getElementById("callStatus");
+              if (csN) csN.innerHTML = "⚠️ 这段录音里几乎检测不到有效语音（可能环境太吵/声音太小/收音方向不对）。请<b>靠近麦克风、环境安静、完整说一段话</b>再试，或「📴 挂断」用文字模式。";
+              var mbN = document.getElementById("callMainBtn"); if (mbN) { mbN.textContent = "🔁 重试开麦"; mbN.disabled = false; }
+            } else if (cb) cb("");
+            return;
+          }
           var mPeak = 0;
-          for (var mi = 0; mi < pcm.length; mi += 80) { var avm = Math.abs(pcm[mi]); if (avm > mPeak) mPeak = avm; }
+          for (var mi = 0; mi < trimmed.length; mi += 80) { var avm = Math.abs(trimmed[mi]); if (avm > mPeak) mPeak = avm; }
+          Voice.mrPeak = mPeak;
+          var durS = Math.round(trimmed.length / 16000);
           if (wasCall) {
-            if (ab.duration < 1.5) {
-              var csR = document.getElementById("callStatus");
-              if (csR) csR.innerHTML = "⚠️ 这段录音只有 " + Math.round(ab.duration) + " 秒，太短了（讯飞会判无效）。请<b>完整说一段话</b>（比如把答案完整说出来）再点「✅ 说完了」。";
-              var mbR = document.getElementById("callMainBtn"); if (mbR) { mbR.textContent = "🔁 重试开麦"; mbR.disabled = false; }
-              return;
-            }
             var csP = document.getElementById("callStatus");
-            if (csP) csP.innerHTML = "🧠 正在识别…（解码峰值 " + (mPeak >= 0.01 ? mPeak.toFixed(3) : "0.000") + " · 时长 " + Math.round(ab.duration) + "s）";
-            if (mPeak < 0.01) {
-              var csQ = document.getElementById("callStatus");
-              if (csQ) csQ.innerHTML = "⚠️ 这段录音是<b>静音</b>（峰值 0.000）——麦克风还是没拾到音。排查：①<b>AirPods/蓝牙耳机先断开</b> ②iPhone 左侧静音拨片 ③对准<b>手机底部小孔</b>说话。说完点「✅ 说完了」重试。";
-            }
-            xfRecognize(getVoiceCfg(), pcm, function (t) { onCallRecognized(t); });
+            if (csP) csP.innerHTML = "🧠 正在识别…（有效语音 " + durS + "s · 峰值 " + (mPeak >= 0.01 ? mPeak.toFixed(3) : "0.000") + "）";
+            xfRecognize(getVoiceCfg(), trimmed, function (t) { onCallRecognized(t); });
           } else if (cb) {
-            xfRecognize(getVoiceCfg(), pcm, cb);
+            xfRecognize(getVoiceCfg(), trimmed, cb);
           }
         }).catch(function (err) {
           try { dctx.close(); } catch (eC2) {}
@@ -1585,7 +1605,7 @@ function xfRecognize(cfg, pcm, done) {
     var finish = function () { if (!finished) { finished = true; clearTimeout(watchdog); try { ws.close(); } catch (e) {} done(resultText.trim()); } };
     ws.onopen = function () {
       var fmt = "audio/L16;rate=16000", enc2 = "raw";
-      ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
+      ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 2000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
       var bytes = new Uint8Array(pcm.buffer);
       var CH = 2560, off = 0;
       while (off < bytes.length) {
@@ -1752,7 +1772,7 @@ function xfOpenStream(cfg, onLive, onFinal, onErr) {
         if (s.closed || gen !== s.gen) return;
         s.retries = 0;
         var fmt = "audio/L16;rate=16000", enc2 = "raw";
-        ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 4000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
+        ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 2000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
       };
       ws.onmessage = function (e) {
         if (s.closed || gen !== s.gen) return;
@@ -1974,8 +1994,13 @@ function onCallRecognized(txt) {
     if (Voice.recOn) voiceCleanup();
     var st = document.getElementById("callStatus");
     if (st) {
-      var lastPk = (Voice.recPeak || 0);
-      var pkTxt = "（最后峰值 " + (lastPk >= 0.01 ? lastPk.toFixed(3) : "0.000") + "——" + (lastPk >= 0.01 ? "麦克风有拾音，可能识别问题" : "麦克风几乎没拾到音，请检查设备/靠近麦克风说话") + "）";
+      var lastPk = (Voice.mrPeak || Voice.recPeak || 0);
+      var pkTxt;
+      if (Voice.mrPeak) {
+        pkTxt = "（录音有效语音峰值 " + Voice.mrPeak.toFixed(3) + "——麦克风拾音正常，但讯飞没识别出文字。可再试一次，或「📴 挂断」用文字模式）";
+      } else {
+        pkTxt = "（最后峰值 " + (lastPk >= 0.01 ? lastPk.toFixed(3) : "0.000") + "——" + (lastPk >= 0.01 ? "麦克风有拾音，可能识别问题" : "麦克风几乎没拾到音，请检查设备/靠近麦克风说话") + "）";
+      }
       st.innerHTML = "😅 没识别到声音" + pkTxt + "。点「🔁 重试开麦」靠近麦克风大声说一次；仍不行就「📴 挂断」改用文字模式。";
     }
     var mb = document.getElementById("callMainBtn");
