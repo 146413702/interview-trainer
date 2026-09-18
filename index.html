@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.31</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.32</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1249,7 +1249,7 @@ function normalizePcm(pcm, maxGain) {
 }
 // 裁剪前导/尾随静音（按 50ms 块能量判断），返回裁剪后的 PCM 或 null（无有效语音）
 function trimSilence16(pcm, rate) {
-  var t = 200; // 阈值：约 0.006 幅度
+  var t = 60; // 阈值：约 0.0018 幅度（更灵敏，兼容偏小音量录音）
   var blk = Math.floor(rate * 0.05); // 50ms
   var n = pcm.length, nb = Math.ceil(n / blk);
   var active = new Array(nb);
@@ -2037,7 +2037,7 @@ function audioGrabAndRecognize(blob, wasCall, cb) {
     };
     src.connect(sp);
     sp.connect(ctx.destination); // 必须消费，否则不回调
-    audio.volume = 0.02; // 极低音量防回录，但不能为 0（部分 iOS 会跳过静音播放）
+    audio.volume = 1.0; // 必须全音量抓取，否则抓到的信号被衰减成静音（播放确认提示已告知用户） // 极低音量防回录，但不能为 0（部分 iOS 会跳过静音播放）
     audio.play().then(function () {
       audio.onended = function () {
         try { src.disconnect(); sp.disconnect(); ctx.close(); } catch (eD) {}
@@ -2045,7 +2045,12 @@ function audioGrabAndRecognize(blob, wasCall, cb) {
         var all = concatPcm(chunks);
         if (!all || all.length < 3200) { tip('⚠️ 抓取到的音频过短/为空，系统解码可能失败。请重录一次，或「📴 挂断」用文字模式。'); return; }
         var trimmed = trimSilence16(all, 16000);
-        if (!trimmed) { tip('⚠️ 抓取到的音频检测不到有效语音。请靠近麦克风、环境安静、完整说一段话再试。'); return; }
+                if (!trimmed) {
+          var dPk = 0;
+          for (var di = 0; di < all.length; di += 50) { var dA = Math.abs(all[di]); if (dA > dPk) dPk = dA; }
+          tip('⚠️ 抓取到的音频检测不到有效语音（样本 ' + all.length + ' · 峰值 ' + dPk + ' ≈ ' + (dPk / 32767).toFixed(3) + '）。若峰值很小(<500)，可能是音量问题：请靠近麦克风大声说；若峰值正常仍报错，请截图发我。');
+          return;
+        }
         var norm = normalizePcm(trimmed, 12);
         var mPeak = 0;
         for (var mi = 0; mi < norm.pcm.length; mi += 80) { var avm = Math.abs(norm.pcm[mi]); if (avm > mPeak) mPeak = avm; }
