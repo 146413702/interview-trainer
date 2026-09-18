@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.32</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.33</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -2007,66 +2007,107 @@ function playLastDecoded() {
   }).catch(function () {});
 }
 // 关键方案：<audio> 元素播放原始 webm，经 MediaElementSource 抓 PCM 再发讯飞（绕开 iOS decodeAudioData 音量丢失）
+// 修复 iOS MediaRecorder 的 fMP4：把藏在文件中间的 ftyp/moov 搬到开头（否则 <audio> 只解码开头一小段，识别就只剩几秒）
+function fixFmp4Buf(buf) {
+  try {
+    var dv = new DataView(buf);
+    var off = 0, ftyp = null, moov = null;
+    while (off + 8 <= buf.byteLength) {
+      var size = dv.getUint32(off);
+      var type = String.fromCharCode(dv.getUint8(off+4), dv.getUint8(off+5), dv.getUint8(off+6), dv.getUint8(off+7));
+      if (size === 1) { size = dv.getUint32(off+8) * 4294967296 + dv.getUint32(off+12); }
+      else if (size === 0) { size = buf.byteLength - off; }
+      if (type === "ftyp") ftyp = { off: off, size: size };
+      else if (type === "moov") moov = { off: off, size: size };
+      off += size;
+      if (off > buf.byteLength) break;
+    }
+    if (!ftyp || !moov) return buf;
+    var headStart = Math.min(ftyp.off, moov.off);
+    var headEnd = Math.max(ftyp.off + ftyp.size, moov.off + moov.size);
+    if (headStart < 8 && headEnd > buf.byteLength - 8) return buf; // 已是标准结构
+    var src = new Uint8Array(buf);
+    var out = new Uint8Array(buf.byteLength);
+    var hs = headEnd - headStart;
+    out.set(src.subarray(headStart, headEnd), 0);
+    var p = hs;
+    out.set(src.subarray(0, headStart), p); p += headStart;
+    out.set(src.subarray(headEnd), p);
+    return out.buffer;
+  } catch (eF) { return buf; }
+}
 // 核心语音链路：<audio> 系统原生解码播放 MediaRecorder 的 fMP4/webm 录音，经 MediaElementSource 抓取 PCM 后识别
-// （完全绕开 iOS 不支持 fMP4 的 decodeAudioData，v7.31 起为唯一解码路径）
+// （修复 fMP4 头后再播放，v7.33：完整解码整段录音）
 function audioGrabAndRecognize(blob, wasCall, cb) {
   if (!blob) { if (wasCall) { var st0 = document.getElementById('callStatus'); if (st0) st0.innerHTML = '没有保存的录音，请先重新录一次。'; } else if (cb) cb(''); return; }
   if (Voice.retrying) return;
   Voice.retrying = true;
-  var u = URL.createObjectURL(blob);
-  var audio = new Audio(u);
-  var Ctx = window.AudioContext || window.webkitAudioContext;
-  var ctx = new Ctx();
-  Voice.playCtx = ctx;
   var tip = function (html) { if (wasCall) { var st = document.getElementById('callStatus'); if (st) st.innerHTML = html; } else { var tp = document.getElementById('ivMicTip'); if (tp) tp.innerHTML = html; } };
-  tip('🧠 正在用系统解码抓取音频并识别…（播放完成自动识别，约几秒）');
-  ctx.resume().then(function () {
-    var src, sp;
+  var fr = new FileReader();
+  fr.onload = function () {
     try {
-      src = ctx.createMediaElementSource(audio);
-    } catch (eMS) {
-      tip('⚠️ 音频抓取被限制（同一个 audio 只能连接一次）。请「🔁 重试开麦」重新录一段再试。');
-      Voice.retrying = false;
-      return;
-    }
-    sp = ctx.createScriptProcessor(4096, 1, 1);
-    var chunks = [];
-    sp.onaudioprocess = function (e) {
-      var ch = e.inputBuffer.getChannelData(0);
-      chunks.push(downsample16(ch, ctx.sampleRate, 16000));
-    };
-    src.connect(sp);
-    sp.connect(ctx.destination); // 必须消费，否则不回调
-    audio.volume = 1.0; // 必须全音量抓取，否则抓到的信号被衰减成静音（播放确认提示已告知用户） // 极低音量防回录，但不能为 0（部分 iOS 会跳过静音播放）
-    audio.play().then(function () {
-      audio.onended = function () {
-        try { src.disconnect(); sp.disconnect(); ctx.close(); } catch (eD) {}
+      var fixed = fixFmp4Buf(fr.result);
+      var nb = new Blob([fixed], { type: blob.type || 'audio/mp4' });
+      startGrab(nb);
+    } catch (eG) { startGrab(blob); }
+  };
+  fr.onerror = function () { startGrab(blob); };
+  fr.readAsArrayBuffer(blob);
+  function startGrab(blob2) {
+    var u = URL.createObjectURL(blob2);
+    var audio = new Audio(u);
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    var ctx = new Ctx();
+    Voice.playCtx = ctx;
+    tip('🧠 正在用系统解码抓取音频并识别…（约几秒）');
+    ctx.resume().then(function () {
+      var src, sp;
+      try {
+        src = ctx.createMediaElementSource(audio);
+      } catch (eMS) {
+        tip('⚠️ 音频抓取被限制（同一个 audio 只能连接一次）。请「🔁 重试开麦」重新录一段再试。');
         Voice.retrying = false;
-        var all = concatPcm(chunks);
-        if (!all || all.length < 3200) { tip('⚠️ 抓取到的音频过短/为空，系统解码可能失败。请重录一次，或「📴 挂断」用文字模式。'); return; }
-        var trimmed = trimSilence16(all, 16000);
-                if (!trimmed) {
-          var dPk = 0;
-          for (var di = 0; di < all.length; di += 50) { var dA = Math.abs(all[di]); if (dA > dPk) dPk = dA; }
-          tip('⚠️ 抓取到的音频检测不到有效语音（样本 ' + all.length + ' · 峰值 ' + dPk + ' ≈ ' + (dPk / 32767).toFixed(3) + '）。若峰值很小(<500)，可能是音量问题：请靠近麦克风大声说；若峰值正常仍报错，请截图发我。');
-          return;
-        }
-        var norm = normalizePcm(trimmed, 12);
-        var mPeak = 0;
-        for (var mi = 0; mi < norm.pcm.length; mi += 80) { var avm = Math.abs(norm.pcm[mi]); if (avm > mPeak) mPeak = avm; }
-        Voice.mrPeak = mPeak;
-        tip('🧠 系统解码抓取成功（有效语音 ' + Math.round(norm.pcm.length / 16000) + 's · 峰值 ' + (mPeak >= 0.01 ? mPeak.toFixed(3) : '0.000') + (norm.gain > 1 ? ' · 放大' + norm.gain.toFixed(1) + '倍' : '') + '），正在识别…');
-        if (wasCall) xfRecognize(getVoiceCfg(), norm.pcm, function (t) { onCallRecognized(t); });
-        else if (cb) xfRecognize(getVoiceCfg(), norm.pcm, cb);
+        return;
+      }
+      sp = ctx.createScriptProcessor(4096, 1, 1);
+      var chunks = [];
+      sp.onaudioprocess = function (e) {
+        var ch = e.inputBuffer.getChannelData(0);
+        chunks.push(downsample16(ch, ctx.sampleRate, 16000));
       };
+      src.connect(sp);
+      sp.connect(ctx.destination); // 必须消费，否则不回调
+      audio.volume = 1.0; // 必须全音量抓取，否则抓到的信号被衰减成静音（播放确认提示已告知用户）
+      audio.play().then(function () {
+        audio.onended = function () {
+          try { src.disconnect(); sp.disconnect(); ctx.close(); } catch (eD) {}
+          Voice.retrying = false;
+          var all = concatPcm(chunks);
+          if (!all || all.length < 3200) { tip('⚠️ 抓取到的音频过短/为空，系统解码可能失败。请重录一次，或「📴 挂断」用文字模式。'); return; }
+          var trimmed = trimSilence16(all, 16000);
+          if (!trimmed) {
+            var dPk = 0;
+            for (var di = 0; di < all.length; di += 50) { var dA = Math.abs(all[di]); if (dA > dPk) dPk = dA; }
+            tip('⚠️ 抓取到的音频检测不到有效语音（样本 ' + all.length + ' · 峰值 ' + dPk + ' ≈ ' + (dPk / 32767).toFixed(3) + '）。若峰值很小(<500)，可能是音量问题：请靠近麦克风大声说；若峰值正常仍报错，请截图发我。');
+            return;
+          }
+          var norm = normalizePcm(trimmed, 12);
+          var mPeak = 0;
+          for (var mi = 0; mi < norm.pcm.length; mi += 80) { var avm = Math.abs(norm.pcm[mi]); if (avm > mPeak) mPeak = avm; }
+          Voice.mrPeak = mPeak;
+          tip('🧠 系统解码抓取成功（有效语音 ' + Math.round(norm.pcm.length / 16000) + 's · 峰值 ' + (mPeak >= 0.01 ? mPeak.toFixed(3) : '0.000') + (norm.gain > 1 ? ' · 放大' + norm.gain.toFixed(1) + '倍' : '') + '），正在识别…');
+          if (wasCall) xfRecognize(getVoiceCfg(), norm.pcm, function (t) { onCallRecognized(t); });
+          else if (cb) xfRecognize(getVoiceCfg(), norm.pcm, cb);
+        };
+      }).catch(function () {
+        Voice.retrying = false;
+        tip('⚠️ 播放被系统拦截，无法抓取音频。请重试或检查 iPhone 静音拨片/音量。');
+      });
     }).catch(function () {
       Voice.retrying = false;
-      tip('⚠️ 播放被系统拦截，无法抓取音频。请重试或检查 iPhone 静音拨片/音量。');
+      tip('⚠️ 音频上下文被系统限制，无法抓取。请重试，或「📴 挂断」用文字模式。');
     });
-  }).catch(function () {
-    Voice.retrying = false;
-    tip('⚠️ 音频上下文被系统限制，无法抓取。请重试，或「📴 挂断」用文字模式。');
-  });
+  }
 }
 function retryWithAudioElement() {
   var blob = Voice.lastBlob;
