@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.34</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.35</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1572,25 +1572,30 @@ function arrayBufferToBase64(buffer) {
   for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return btoa(bin);
 }
-function xfRecognize(cfg, pcm, done) {
+function xfRecognize(cfg, pcm, done, logFn) {
+  var lg = (typeof logFn === 'function') ? logFn : function () {};
   var host = "iat-api.xfyun.cn", path = "/v2/iat";
   var date = new Date().toUTCString();
   var sigOrigin = "host: " + host + "\ndate: " + date + "\nGET " + path + " HTTP/1.1";
   var enc = new TextEncoder();
+  lg('✓ 正在签名（讯飞）…');
   crypto.subtle.importKey("raw", enc.encode(cfg.xfSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]).then(function (key) {
     return crypto.subtle.sign("HMAC", key, enc.encode(sigOrigin));
   }).then(function (sigBuf) {
     var sig = arrayBufferToBase64(sigBuf.buffer || sigBuf);
     var authOrigin = 'api_key="' + cfg.xfKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + sig + '"';
     var url = "wss://" + host + path + "?authorization=" + encodeURIComponent(arrayBufferToBase64(enc.encode(authOrigin).buffer)) + "&date=" + encodeURIComponent(date) + "&host=" + host;
+    lg('✓ 签名完成，连接讯飞…');
     var ws = new WebSocket(url);
     var resultText = "", finished = false;
-    var watchdog = setTimeout(function () { finish(); }, 25000);
+    var watchdog = setTimeout(function () { lg('✗ 25 秒超时，强制结束'); finish(); }, 25000);
     var finish = function () { if (!finished) { finished = true; clearTimeout(watchdog); try { ws.close(); } catch (e) {} done(resultText.trim()); } };
     ws.onopen = function () {
+      lg('✓ 已连接，发送 ' + Math.round(pcm.byteLength / 32) + ' 字节音频…');
       var fmt = "audio/L16;rate=16000", enc2 = "raw";
       ws.send(JSON.stringify({ common: { app_id: cfg.xfAppid }, business: { language: "zh_cn", domain: "iat", accent: "mandarin", vad_eos: 2000 }, data: { status: 0, format: fmt, encoding: enc2 } }));
-      var bytes = new Uint8Array(pcm.buffer);
+      // 用 byteOffset/byteLength 精确截取（trim 后的 Int16Array 可能是 subarray，直接 .buffer 会多带前导静音）
+      var bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
       var CH = 2560, off = 0;
       while (off < bytes.length) {
         var len = Math.min(CH, bytes.length - off);
@@ -1600,11 +1605,14 @@ function xfRecognize(cfg, pcm, done) {
         off += len;
       }
       ws.send(JSON.stringify({ data: { status: 2, format: fmt, encoding: enc2 } }));
+      lg('✓ 发送完成，等待识别结果…');
     };
     ws.onmessage = function (e) {
+      var raw = String(e.data);
+      lg('← 讯飞: ' + raw.slice(0, 140));
       try {
-        var d = JSON.parse(e.data);
-        if (d.code && d.code !== 0) { finish(); return; }
+        var d = JSON.parse(raw);
+        if (d.code && d.code !== 0) { lg('✗ 讯飞错误码 ' + d.code); finish(); return; }
         if (d.data && d.data.result) {
           var decoded = decodeURIComponent(escape(atob(d.data.result)));
           var obj = JSON.parse(decoded);
@@ -1615,14 +1623,16 @@ function xfRecognize(cfg, pcm, done) {
             }
           }
         }
-        if (d.data && d.data.status === 2) finish();
-      } catch (e2) {}
+        if (d.data && d.data.status === 2) { lg('✓ 识别完成'); finish(); }
+      } catch (e2) { lg('⚠ 解析响应异常: ' + raw.slice(0, 80)); }
     };
-    ws.onerror = function () { finish(); };
-    ws.onclose = function () { finish(); };
-  }).catch(function () { done(""); });
+    ws.onerror = function () { lg('✗ ws 连接错误（网络/被拦截）'); finish(); };
+    ws.onclose = function (ev) { lg('✗ ws 关闭 code=' + ev.code + (ev.reason ? ' ' + ev.reason : '')); finish(); };
+  }).catch(function (e) {
+    lg('✗ 签名失败: ' + (e && e.message || e));
+    done("");
+  });
 }
-
 function extractTerms(text) {
   var lower = String(text).toLowerCase(), hits = [];
   for (var i = 0; i < TECH_TERMS.length; i++) {
@@ -2036,8 +2046,9 @@ function decodeRecognize(blob, wasCall, cb) {
       var mPeak = 0;
       for (var mi = 0; mi < norm.pcm.length; mi += 80) { var avm = Math.abs(norm.pcm[mi]); if (avm > mPeak) mPeak = avm; }
       Voice.mrPeak = mPeak;
+      Voice.lastAudioMeta = { sr: sr, dur: (ab.duration || 0), gain: norm.gain };
       tip('🧠 正在识别…（有效语音 ' + Math.round(norm.pcm.length / 16000) + 's · 峰值 ' + (mPeak >= 0.01 ? mPeak.toFixed(3) : '0.000') + (norm.gain > 1 ? ' · 放大' + norm.gain.toFixed(1) + '倍' : '') + '）');
-      if (wasCall) xfRecognize(getVoiceCfg(), norm.pcm, function (t) { onCallRecognized(t); });
+      if (wasCall) xfRecognize(getVoiceCfg(), norm.pcm, function (t) { onCallRecognized(t); }, function (s) { var lg = document.getElementById('callStatus'); if (lg) lg.innerHTML = '🧠 ' + s + '<br><span style="font-size:12px;color:#718096">识别失败时请把这里最后一行文字发给我，我按它定位。</span>'; });
       else if (cb) xfRecognize(getVoiceCfg(), norm.pcm, cb);
     }).catch(function (err) {
       try { dctx.close(); } catch (eC2) {}
