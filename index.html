@@ -215,7 +215,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.41</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.42</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -685,7 +685,13 @@ var WM_CHOICE = [
   {q:"TCP 三次握手的主要目的是？",opts:["数据加密","建立可靠连接","压缩数据","路由转发"],a:1},
   {q:"CI/CD 中持续集成（CI）的主要目的是？",opts:["部署上线","频繁集成尽早发现集成问题","监控告警","数据备份"],a:1},
   {q:"Git 撤销已 commit 但未 push 的提交，用？",opts:["git reset --soft HEAD~1","git push","git clone","git branch"],a:0}
-];
+];,
+{q:"Spring Boot 和 Spring MVC 的关系是？",opts:["Boot 替代了 MVC","Boot 是脚手架，MVC 是 Web 框架，Boot 自动装配 MVC","两者完全无关","MVC 是 Boot 的升级版"],a:1},
+{q:"MySQL 联合索引 (a,b,c)，以下哪个查询能用到索引？",opts:["where b=?","where c=?","where a=? and b=?","where b=? and c=?"],a:2},
+{q:"以下哪种情况索引会失效？",opts:["where a=?","where a=? and b=?","where DATE(create_time)='2026-01-01'","where a>10 and b=?"],a:2},
+{q:"TCP 和 UDP 的区别，正确的是？",opts:["TCP 无连接，UDP 面向连接","TCP 可靠有序，UDP 快速不可靠","TCP 比 UDP 快","UDP 保证数据不丢"],a:1},
+{q:"WebSocket 相比 HTTP 的优势是？",opts:["更安全","全双工长连接，服务器可主动推送","更简单","不需要握手"],a:1},
+{q:"密码加密推荐用哪种？",opts:["MD5","明文","bcrypt/Argon2 慢哈希","Base64"],a:2}
 var WM_SUBJ = [
   {type:"SQL",q:"销售表 sales(product_name, amount)，查询每个产品总销量大于 1000 的产品名及总销量，按总销量降序排列。",ref:"SELECT product_name, SUM(amount) AS total FROM sales GROUP BY product_name HAVING SUM(amount) > 1000 ORDER BY total DESC;"},
   {type:"SQL",q:"用户表 users(id, name, age)，查询年龄大于平均年龄的所有用户。",ref:"SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users);"},
@@ -697,7 +703,10 @@ var WM_SUBJ = [
   {type:"场景",q:"服务器 CPU 突然飙升到 100%，怎么定位是哪个进程/原因？",ref:"top 按P找高CPU进程 → top -H -p PID 找高CPU线程 → 转16进制 → jstack 看线程栈（Java）或 strace 看系统调用。"},
   {type:"SQL",q:"查询员工表 employees(salary) 中第二高的薪资（如果只有一个薪资返回 NULL）。",ref:"SELECT MAX(salary) AS SecondHighestSalary FROM employees WHERE salary < (SELECT MAX(salary) FROM employees);"},
   {type:"场景",q:"MySQL 主从同步延迟很大（Seconds_Behind_Master 很高），怎么排查和解决？",ref:"找原因：大事务/从库单线程回放/从库硬件差/从库跑慢查询/网络差。解决：拆大事务、开并行复制(MTS)、升从库硬件、优化慢SQL、主从同机房。"}
-];
+];,
+{type:"编程",q:"给定一个数组（可能有重复元素），在不扩容的情况下如何去重？写出思路或伪代码。",ref:"用双指针：i 指向已去重部分末尾，j 遍历数组。如果 nums[j] 和 nums[i] 不同，i++ 并把 nums[j] 复制到 nums[i]。最后 i+1 就是去重后的长度。（适用于有序数组；无序用 HashSet 但需要额外空间）"},
+{type:"编程",q:"用 Java 设计一个闹钟功能，怎么保证到点后闹钟一定会响？（考虑程序重启/宕机）",ref:"思路：1) 定时任务（ScheduledExecutorService/Quartz）2) 持久化闹钟任务到数据库/文件，重启后加载 3) 时间到了触发提醒（声音/推送）4) 防重复触发（状态标记）5) 分布式场景用 Redis 过期监听或消息队列。面试加分：提到持久化+重试+幂等。"},
+{type:"编程",q:"合并两个有序单向链表，写出思路或伪代码。",ref:"双指针法：p1 指向 list1 头，p2 指向 list2 头。每次比较两个指针的值，小的接到结果链表，指针后移。一个链表走完后把另一个剩余部分接上。时间 O(n+m)，空间 O(1)。"}
 var wmState = null;
 function renderWrittenMain(main) {
   var html = '<div class="toolbox"><h2>📝 笔试模拟</h2>' +
@@ -3090,6 +3099,19 @@ QDATA["java"] = [
 {"s":2,"t":["theory"],"q":"Maven 的生命周期？","a":"Maven 三大生命周期：\n- clean：清理（clean 删除 target）\n- default：核心构建，主要阶段：validate → compile（编译）→ test（测试）→ package（打包 jar/war）→ install（装到本地仓库）→ deploy（发布到远程仓库）\n- site：生成站点文档\n面试常问：`mvn package` 和 `mvn install` 的区别（package 只打包，install 打包并装到本地仓库供其他模块引用）；`mvn clean package -DskipTests` 跳过测试。\nCI 里常配合：`mvn clean package -Dmaven.test.skip=true` 构建产物，再上传部署。"},
 {"s":1,"t":["theory"],"q":"Redis 7.0 的多线程 IO 是怎么实现的？","a":"超纲加分题（应届答不出正常，答出是亮点）。\n- Redis 单线程的\"快\"是指：命令执行（处理逻辑）仍是单线程，没有锁、没有上下文切换，所以原子且快。\n- 瓶颈在网络 IO：读取请求、写回响应的 read/write 系统调用很耗时。Redis 6.0+（7.0 完善）把\"网络 IO 读写\"拆到多线程，命令执行仍单线程。\n- 模型：主线程接收连接 → 多个 IO 线程并行读请求 → 主线程串行执行命令 → IO 线程并行写回响应。\n- 参数：io-threads（默认 4，建议 <8，且读线程数通常 = 写线程数）。\n- 面试加分点：\"执行单线程、IO 多线程\"这个精确表述，比笼统说\"Redis 多线程了\"高级得多。"},
 {"s":1,"t":["theory"],"q":"Redis 的 RDB 与 AOF 混合持久化，底层是怎么配合的？","a":"超纲加分题（应届答不出正常，答出是亮点）。\n- RDB：把内存快照二进制 dump 到磁盘，恢复快，但两次快照之间的数据可能丢。\n- AOF：记录每条写命令，恢复慢但丢数据少（取决于 appendfsync 策略）。\n- 混合持久化（aof-use-rdb-preamble yes，Redis 4.0+）：AOF 文件开头放一段 RDB 格式的基线数据，后面追加增量写命令——兼顾 RDB 的恢复快和 AOF 的数据安全。\n- 重写（rewrite）：后台子进程生成新的混合文件，主进程继续服务并把增量命令缓存，最后合并。\n- 面试加分点：能讲出\"AOF 头是 RDB 体 + 尾部增量命令\"这个结构，就说明你真看过实现而不是背概念。"}
+,
+{"s":5,"t":["theory","project"],"q":"Spring Boot 和 Spring MVC 的区别是什么？","a":"Spring MVC 是 Web 框架，负责处理 HTTP 请求（DispatcherServlet、Controller、@RequestMapping），相当于一个 MVC 框架，需要自己配置 XML/注解、集成各种中间件。\nSpring Boot 是「开箱即用」的脚手架，内置 Tomcat、自动配置（starter）、起步依赖，不用写 XML，main 方法启动。它不是替代 MVC，而是把 MVC 等框架包装起来自动装配。\n简单记：MVC 是干活的，Boot 是帮你快速搭起来的。"},
+{"s":5,"t":["theory"],"q":"事务失效的场景有哪些？为什么非 public 方法会导致事务失效？","a":"常见失效场景：\n1. **非 public 方法**：Spring AOP 基于代理，只对 public 方法生效（CGLIB 子类也无法重写 private/protected）\n2. **自调用**：同一个类里 A 方法调 B 方法（B 加了事务），this 调用不走代理，事务失效\n3. **异常被 catch 吞了**：try-catch 吃掉异常，Spring 不知道出错了，不会回滚\n4. **异常类型不匹配**：默认只回滚 RuntimeException 和 Error，检查异常（Exception）不回滚，需要 rollbackFor=Exception.class\n5. **数据库引擎不支持**：MyISAM 不支持事务，必须用 InnoDB\n6. **传播行为设置错误**：比如 NOT_SUPPORTED 挂起事务"},
+{"s":4,"t":["theory"],"q":"HashMap / Map 的底层实现原理？","a":"HashMap（JDK 1.8）：\n- 数组 + 链表 + 红黑树（链表长度 >8 且数组长度 ≥64 时转红黑树）\n- put：hash(key) 定位数组下标 → 链表/红黑树查找 → 没有就插入\n- 扩容：负载因子 0.75，超过就 resize 扩容一倍，重新 hash\n- 线程不安全：并发 put 可能丢数据，多线程用 ConcurrentHashMap（分段锁/CAS）\nConcurrentHashMap：JDK1.8 后用 CAS + synchronized 锁单个桶，比 Hashtable 效率高"},
+{"s":5,"t":["theory"],"q":"MySQL 有哪些索引类型？","a":"按数据结构分：\n- **B+ 树索引**（最常用）：叶子节点存数据或主键，非叶子节点存索引，范围查询快\n- **Hash 索引**：等值查询快，范围查询慢（Memory 引擎默认）\n- **全文索引**：全文检索（FULLTEXT）\n按逻辑分：\n- **主键索引**（聚簇索引）：叶子节点存整行数据，一张表只能一个\n- **二级索引**（非聚簇）：叶子节点存主键值，查完整行需要回表\n- **联合索引**：多列组合 (a,b,c)，遵循最左前缀原则\n- **唯一索引**：值唯一\n- **普通索引**：无约束"},
+{"s":5,"t":["theory"],"q":"什么是最左前缀匹配？","a":"联合索引 (a,b,c) 的查询条件必须从最左列开始才能用到索引：\n- ✅ where a=? 用到\n- ✅ where a=? and b=? 用到\n- ✅ where a=? and b=? and c=? 用到（全用到）\n- ❌ where b=? 用不到（跳过了 a）\n- ❌ where b=? and c=? 用不到\n- ✅ where a=? and c=? 用到 a，c 用不到（中间断了 b）\n范围查询（>、<、like）后面的列也会失效。\n简单记：从最左边开始，遇到范围查询就停。"},
+{"s":4,"t":["theory"],"q":"索引失效的场景有哪些？","a":"常见失效场景：\n1. 违反最左前缀原则（跳过最左列）\n2. 对索引列用函数/运算：where DATE(create_time)='2026-01-01' → 改成范围查询\n3. 隐式类型转换：where varchar_col = 123（数字当字符串用）\n4. like '%xxx'：左模糊，索引失效（右模糊 like 'xxx%' 可以用）\n5. or 连接的条件有一个没索引\n6. 联合索引中间出现范围查询，后面的列失效\n7. 优化器判断全表扫描更快（数据量太少/索引区分度低）\n排查工具：EXPLAIN 看 type（ALL=全表扫描）、key（实际用的索引）、rows（扫描行数）"},
+{"s":4,"t":["theory"],"q":"数据库优化的方式有哪些？","a":"从几个层面：\n1. **索引优化**：加合适的索引、避免索引失效、覆盖索引（避免回表）\n2. **SQL 优化**：避免 select *、慢查询排查（慢查询日志+EXPLAIN）、分页优化（limit 100000,10 → 用游标/子查询）\n3. **表结构优化**：字段类型合适（varchar 长度、避免 NULL）、大字段拆表\n4. **架构优化**：读写分离、分库分表（水平/垂直）、缓存（Redis）\n5. **配置优化**：innodb_buffer_pool_size、连接数、日志刷盘策略\n6. **硬件**：SSD、内存、CPU"},
+{"s":3,"t":["theory"],"q":"密码加密方式有哪些？","a":"常见方式：\n- **明文**：绝对不行\n- **MD5/SHA**：单向哈希，但彩虹表可破解，不安全\n- **加盐哈希**：MD5(password + salt)，每个用户随机 salt，防彩虹表\n- **bcrypt/scrypt/Argon2**：专门设计的慢哈希，自带 salt，抗暴力破解（推荐）\n- **不可逆加密**：登录时比对哈希，不存明文\n面试加分：提到 bcrypt/Argon2 比 MD5+salt 更安全（计算慢，抗 GPU 暴力）"},
+{"s":3,"t":["theory"],"q":"JWT 和 Session/Radius 认证的区别？","a":"Session：服务器存会话状态，客户端存 sessionId（Cookie），有状态，扩展需要共享 Session（Redis）。\nJWT（JSON Web Token）：无状态，服务器不存 session，token 里存用户信息+签名，客户端每次请求带 token，服务器验签即可。适合分布式/跨域。\nRadius：网络接入认证协议（VPN/拨号），UDP 1812，AAA 架构（认证/授权/计费），用于网络设备接入。\n简单记：Session 有状态存在服务器，JWT 无状态存在客户端，Radius 是网络设备认证协议。"},
+{"s":3,"t":["theory"],"q":"什么是 token？（AI 大模型语境）","a":"在大模型（ChatGPT/DeepSeek）语境下：\n- Token 是模型处理文本的最小单位，大致 1 个汉字 ≈ 1~2 个 token，1 个英文单词 ≈ 1 个 token\n- 输入和输出都按 token 计费（API 按 token 收费）\n- 有上下文长度限制（比如 4k/8k/32k/128k token），超出要截断或摘要\n面试加分：能说清「token ≠ 字符 ≠ 词」，是模型分词后的单位，直接影响 API 成本和上下文窗口。"},
+{"s":2,"t":["theory"],"q":"提示词工程（Prompt Engineering）怎么写好？","a":"写好提示词的要点：\n1. **角色明确**：你是一个资深运维工程师...\n2. **任务清晰**：请帮我分析...\n3. **给示例**：few-shot，给 1~2 个输入输出样例\n4. **约束明确**：输出格式、字数、风格\n5. **分步思考**：让模型一步步分析（Chain of Thought）\n6. **上下文充分**：给足背景信息\n面试加分：提到 few-shot、CoT（思维链）、系统提示词 vs 用户提示词的区别。"}
+
 ];
 </script><script>
 window.QDATA = window.QDATA || {};
@@ -3120,6 +3142,11 @@ QDATA["network"] = [
 {"s":3,"t":["theory"],"q":"负载均衡的四层和七层区别？","a":"四层（传输层，基于 IP+端口）：LVS、F5。\n- 只转发 TCP/UDP 报文，不解析应用内容\n- 性能高（内核态转发）、吞吐大\n- 缺点：无法根据 URL/Host 路由、无法做应用层协议处理（如 HTTPS 卸载、压缩）\n七层（应用层，基于 HTTP 内容）：Nginx、HAProxy。\n- 能解析 URL、Host、Header，按路径/域名分发\n- 支持 SSL 终止、缓存、压缩、限流\n- 性能低于四层（用户态处理）\n选型：纯高并发 TCP 转发用 LVS，HTTP 业务用 Nginx，可组合（LVS 前置 + Nginx 后置）。"},
 {"s":1,"t":["theory"],"q":"TCP BBR 拥塞控制算法为什么能提升带宽？","a":"超纲加分题（应届答不出正常，答出是亮点）。\n- 传统算法（CUBIC 等）以\"丢包\"为拥塞信号：发现丢包就大幅降速，但网络链路中丢包可能不是拥塞（如无线、深队列 buffer），导致带宽利用率低。\n- BBR（Bottleneck Bandwidth and Round-trip propagation time）：以\"带宽和 RTT 测量\"为信号，主动探测链路瓶颈带宽，让发送速率贴近真实链路容量，而不是等丢包。\n- 效果：在长肥管道（高带宽高延迟，如跨机房/跨国链路）上，带宽利用率可从 20%-30% 提升到 90%+。\n- 运维相关：Linux 内核 4.9+ 可启用 `net.core.default_qdisc=fq` + `net.ipv4.tcp_congestion_control=bbr`；CDN、视频、大文件下载场景收益明显。"},
 {"s":1,"t":["theory"],"q":"ZGC 的并发标记和染色指针（Colored Pointers）是什么？","a":"超纲加分题（应届答不出正常，答出是亮点）。\n- ZGC（Z Garbage Collector）：JDK 11+ 的低延迟垃圾收集器，目标是 STW 停顿在 10ms 以内，不管堆多大。\n- 核心是把几乎全部阶段并发化：标记、转移、重映射都不需要 Stop-The-World。\n- 染色指针：把指针的高位（64 位中的前 18 位）当作标记位（Marked0/Marked1/Remapped/Finalizable 等），通过修改指针位而不是对象头来记录 GC 状态——所以 GC 线程和应用线程可以并发读对象，用读屏障（load barrier）即时处理指针状态。\n- 面试加分点：\"指针上染色、读屏障、并发转移、Region 化内存\"这几个词能说出来，应届里就是顶尖水平。"}
+,
+{"s":5,"t":["theory"],"q":"TCP 和 UDP 的区别是什么？谁更安全谁更快？","a":"TCP：面向连接（三次握手）、可靠传输（确认重传）、有序、字节流、开销大（头部 20 字节）、速度慢。用于文件传输、HTTP、数据库。\nUDP：无连接、不可靠（不保证送达）、无序、数据报、开销小（头部 8 字节）、速度快。用于视频通话、DNS、游戏。\n安全：TCP 本身不更安全（安全靠 TLS），但可靠传输保证数据不丢。\n速度：UDP 更快（无握手、无重传、无拥塞控制）。\n面试加分：能说出「TCP 保证可靠，UDP 保证快」这个核心权衡。"},
+{"s":4,"t":["theory"],"q":"WebSocket 和 HTTP 的区别是什么？","a":"HTTP：无状态、短连接（请求-响应）、单向（客户端发请求服务器才响应）、每次都要带 header、轮询效率低。\nWebSocket：全双工、长连接（一次握手后保持）、服务器可以主动推消息、header 小（握手后只有 2~10 字节）、适合实时通信（聊天、通知、股票行情）。\n简单记：HTTP 是一问一答，WebSocket 是双方随时说话。"},
+{"s":3,"t":["theory"],"q":"什么是全双工、半双工、单工通信？","a":"单工：只能一个方向传（广播、电视）。\n半双工：双向但不能同时（对讲机，你说完我再说）。\n全双工：双向同时传（打电话、WebSocket）。\nTCP 是全双工（双方可以同时收发数据）。\n面试加分：能结合 WebSocket 说「HTTP 半双工，WebSocket 全双工」。"}
+
 ];
 </script><script>
 window.QDATA = window.QDATA || {};
