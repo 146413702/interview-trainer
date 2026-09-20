@@ -177,6 +177,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <button class="mode-btn active" data-mode="browse">📖 刷题</button>
   <button class="mode-btn" data-mode="quiz">📝 随机小测</button>
   <button class="mode-btn" data-mode="interview">🎤 模拟面试</button>
+  <button class="mode-btn" data-mode="written">📝 笔试模拟</button>
   <button class="mode-btn" data-mode="wrong">❌ 错题集</button>
   <button class="mode-btn" data-mode="history">📊 历史记录</button>
 </div>
@@ -214,7 +215,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.40</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.41</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -653,12 +654,169 @@ function switchMode(mode) {
   var main = document.getElementById("mainContent");
   if (mode === "quiz") renderQuizMain(main);
   else if (mode === "interview") renderInterviewMain(main);
+  else if (mode === "written") renderWrittenMain(main);
   else if (mode === "wrong") renderWrongMain(main);
   else if (mode === "history") renderHistoryMain(main);
 }
 document.querySelectorAll(".mode-btn").forEach(function (b) {
   b.addEventListener("click", function () { switchMode(b.dataset.mode); });
 });
+
+
+/* ================= 笔试模拟（选择题+SQL/编程+场景） ================= */
+var WM_CHOICE = [
+  {q:"查看 Linux 服务器端口占用情况，用哪个命令？",opts:["ls -l","netstat -tlnp","cd /etc","mkdir port"],a:1},
+  {q:"查看 Docker 容器日志，用哪个命令？",opts:["docker ps","docker images","docker logs 容器名","docker exec"],a:2},
+  {q:"MySQL 查看从库同步状态，用什么命令？",opts:["SHOW MASTER STATUS","SHOW SLAVE STATUS","SHOW BINARY LOGS","SHOW PROCESSLIST"],a:1},
+  {q:"Redis 哨兵（Sentinel）的主要作用是？",opts:["数据持久化","自动故障转移","缓存穿透防护","数据分片"],a:1},
+  {q:"HTTP 状态码 403 表示？",opts:["请求成功","禁止访问","资源未找到","服务器内部错误"],a:1},
+  {q:"HTTP 状态码 502 表示？",opts:["成功","网关错误/上游无响应","永久重定向","未修改"],a:1},
+  {q:"Nginx 负载均衡默认策略是？",opts:["权重 weight","ip_hash","轮询 round-robin","最少连接"],a:2},
+  {q:"查看 CPU 占用最高的进程，用哪个命令？",opts:["free -h","df -h","top","uptime"],a:2},
+  {q:"Docker 容器和虚拟机的主要区别是？",opts:["容器有独立内核","容器共享宿主机内核","容器启动更慢","容器性能更差"],a:1},
+  {q:"MySQL 索引的主要作用是？",opts:["加速查询","增加数据量","数据备份","数据加密"],a:0},
+  {q:"Redis 缓存穿透指的是？",opts:["热点key过期瞬间大量请求","大量key同时过期","查询不存在的数据直接打到数据库","Redis实例宕机"],a:2},
+  {q:"实时查看日志新增内容，用哪个命令？",opts:["cat file.log","head file.log","tail -f file.log","less file.log"],a:2},
+  {q:"Git 合并分支用哪个命令？",opts:["git clone","git commit","git merge","git push"],a:2},
+  {q:"查看磁盘分区使用率，用哪个命令？",opts:["free -h","df -h","top","ps aux"],a:1},
+  {q:"查看内存使用情况，用哪个命令？",opts:["df -h","netstat","free -h","du -sh"],a:2},
+  {q:"Nginx 动静分离的主要目的是？",opts:["安全加固","提升性能、减轻后端压力","数据加密","负载均衡"],a:1},
+  {q:"Dockerfile 的作用是？",opts:["启动容器","定义镜像构建步骤","管理网络","数据备份"],a:1},
+  {q:"TCP 三次握手的主要目的是？",opts:["数据加密","建立可靠连接","压缩数据","路由转发"],a:1},
+  {q:"CI/CD 中持续集成（CI）的主要目的是？",opts:["部署上线","频繁集成尽早发现集成问题","监控告警","数据备份"],a:1},
+  {q:"Git 撤销已 commit 但未 push 的提交，用？",opts:["git reset --soft HEAD~1","git push","git clone","git branch"],a:0}
+];
+var WM_SUBJ = [
+  {type:"SQL",q:"销售表 sales(product_name, amount)，查询每个产品总销量大于 1000 的产品名及总销量，按总销量降序排列。",ref:"SELECT product_name, SUM(amount) AS total FROM sales GROUP BY product_name HAVING SUM(amount) > 1000 ORDER BY total DESC;"},
+  {type:"SQL",q:"用户表 users(id, name, age)，查询年龄大于平均年龄的所有用户。",ref:"SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users);"},
+  {type:"SQL",q:"订单表 orders(id, user_id, amount)，查询每个用户的订单数和总金额，按总金额降序。",ref:"SELECT user_id, COUNT(*) AS order_cnt, SUM(amount) AS total FROM orders GROUP BY user_id ORDER BY total DESC;"},
+  {type:"编程",q:"写一个函数 findMaxDiff(int[] nums)，返回数组中最大值减最小值的结果。（Java 或伪代码均可）",ref:"遍历一遍同时维护 max 和 min，返回 max-min。注意空数组/单元素边界。"},
+  {type:"编程",q:"写一个函数 isPalindrome(String s)，判断字符串是否是回文（正读反读一样）。",ref:"双指针从两头往中间比，不等就返回 false，遍历完返回 true。"},
+  {type:"编程",q:"写一个函数 reverseString(String s)，反转字符串。",ref:"转成 char 数组两头交换，或用 StringBuilder.reverse()。"},
+  {type:"场景",q:"用户反馈「网站打不开了」，你的排查思路是什么？",ref:"从外到内：网络层(ping/curl/DNS) → Web服务器(nginx进程/日志/配置) → 系统资源(CPU/内存/磁盘) → 应用层(进程/日志) → 依赖(MySQL/Redis) → 防火墙/安全组。"},
+  {type:"场景",q:"服务器 CPU 突然飙升到 100%，怎么定位是哪个进程/原因？",ref:"top 按P找高CPU进程 → top -H -p PID 找高CPU线程 → 转16进制 → jstack 看线程栈（Java）或 strace 看系统调用。"},
+  {type:"SQL",q:"查询员工表 employees(salary) 中第二高的薪资（如果只有一个薪资返回 NULL）。",ref:"SELECT MAX(salary) AS SecondHighestSalary FROM employees WHERE salary < (SELECT MAX(salary) FROM employees);"},
+  {type:"场景",q:"MySQL 主从同步延迟很大（Seconds_Behind_Master 很高），怎么排查和解决？",ref:"找原因：大事务/从库单线程回放/从库硬件差/从库跑慢查询/网络差。解决：拆大事务、开并行复制(MTS)、升从库硬件、优化慢SQL、主从同机房。"}
+];
+var wmState = null;
+function renderWrittenMain(main) {
+  var html = '<div class="toolbox"><h2>📝 笔试模拟</h2>' +
+    '<p>模拟真实笔试：<b>6 道选择题</b>（本地即时判对错）+ <b>4 道主观题</b>（SQL/编程/场景，DeepSeek AI 判分），共 100 分。选择题每题 10 分，主观题每题 10 分。配置 AI 接口后主观题自动评分。</p>' +
+    '<button class="btn btn-primary" onclick="startWrittenExam()">🎲 开始笔试模拟（10题）</button></div><div id="writtenArea"></div>';
+  main.innerHTML = html;
+}
+function startWrittenExam() {
+  // 抽 6 选择 + 2 SQL/编程 + 2 场景 = 10 题
+  var ch = WM_CHOICE.slice();
+  for (var i = ch.length - 1; i > 0; i--) { var r = Math.floor(Math.random() * (i + 1)); var t = ch[i]; ch[i] = ch[r]; ch[r] = t; }
+  var subj = WM_SUBJ.slice();
+  for (var i2 = subj.length - 1; i2 > 0; i2--) { var r2 = Math.floor(Math.random() * (i2 + 1)); var t2 = subj[i2]; subj[i2] = subj[r2]; subj[r2] = t2; }
+  var picked = { choice: ch.slice(0, 6), subj: subj.slice(0, 4) };
+  wmState = { picked: picked, subjScores: [] };
+  var html = '<div class="toolbox"><h2>📝 笔试模拟（10 题 / 100 分）</h2>' +
+    '<p>选择题直接选；主观题在下方文本框写完，最后点「提交并 AI 判分」。</p>' +
+    '<button class="btn btn-primary" onclick="submitWrittenExam()">✅ 提交并 AI 判分</button></div><div id="writtenQs"></div>';
+  document.getElementById("writtenArea").innerHTML = html;
+  var qs = '<h3 style="margin:14px 0 8px">一、选择题（6 题 × 10 分 = 60 分）</h3>';
+  for (var m = 0; m < picked.choice.length; m++) {
+    var q = picked.choice[m];
+    qs += '<div class="quiz-q"><div class="quiz-q-title">' + (m + 1) + '. ' + esc(q.q) + '</div>';
+    for (var o = 0; o < q.opts.length; o++) {
+      var lbl = String.fromCharCode(65 + o);
+      qs += '<label style="display:block;padding:4px 0;font-size:14px"><input type="radio" name="wmc_' + m + '" value="' + o + '" style="width:auto;vertical-align:middle"> ' + lbl + '. ' + esc(q.opts[o]) + '</label>';
+    }
+    qs += '<div class="quiz-ref" id="wmc_ref_' + m + '" style="display:none"></div></div>';
+  }
+  qs += '<h3 style="margin:18px 0 8px">二、主观题（4 题 × 10 分 = 40 分）</h3>';
+  for (var s = 0; s < picked.subj.length; s++) {
+    var sq = picked.subj[s];
+    qs += '<div class="quiz-q"><div class="quiz-q-title">' + (s + 1) + '. <span style="font-size:12px;color:#2B6CB0">[' + sq.type + ']</span> ' + esc(sq.q) + '</div>' +
+      '<textarea class="quiz-answer-input" id="wms_' + s + '" placeholder="写下你的答案..."></textarea>' +
+      '<div class="quiz-ref" id="wms_ref_' + s + '">' + esc(sq.ref) + '</div>' +
+      '<div class="ai-judge-out" id="wms_ai_' + s + '" style="display:none"></div></div>';
+  }
+  document.getElementById("writtenQs").innerHTML = qs;
+}
+function submitWrittenExam() {
+  if (!wmState) return;
+  var p = wmState.picked;
+  // 选择题本地判分
+  var choiceScore = 0;
+  for (var m = 0; m < p.choice.length; m++) {
+    var sel = document.querySelector('input[name="wmc_' + m + '"]:checked');
+    var correct = p.choice[m].a;
+    var refEl = document.getElementById("wmc_ref_" + m);
+    refEl.style.display = "block";
+    if (sel && parseInt(sel.value) === correct) {
+      choiceScore += 10;
+      refEl.innerHTML = '✅ 正确！答案：' + String.fromCharCode(65 + correct) + '. ' + esc(p.choice[m].opts[correct]);
+      refEl.style.borderLeftColor = "#38A169";
+    } else {
+      var yourAns = sel ? String.fromCharCode(65 + parseInt(sel.value)) : "未答";
+      refEl.innerHTML = '❌ 错误（你选了 ' + yourAns + '）。正确答案：' + String.fromCharCode(65 + correct) + '. ' + esc(p.choice[m].opts[correct]);
+      refEl.style.borderLeftColor = "#E53E3E";
+    }
+  }
+  // 主观题 AI 判分
+  var cfg = getAiConfig();
+  var subjScore = 0, subjDone = 0, subjTotal = p.subj.length;
+  var outHtml = '<div class="toolbox" style="margin-top:16px"><h2>📊 笔试结果</h2>';
+  outHtml += '<p>选择题得分：<b style="color:#38A169">' + choiceScore + '</b> / 60</p>';
+  var subjSection = document.createElement("div");
+  subjSection.innerHTML = '<p>主观题评分：' + (cfg ? "AI 判题中…" : "未配置 AI 接口，请看参考答案自评（每题 10 分）") + '</p>';
+  document.getElementById("writtenArea").appendChild(subjSection);
+  if (!cfg || !cfg.url) {
+    var total = choiceScore;
+    outHtml += '<p style="font-size:16px;margin-top:8px">当前总分（选择题）：<b>' + total + '</b> / 100<br><span style="font-size:12px;color:#718096">（主观题未判，去配置 AI 接口后可自动评分）</span></p></div>';
+    subjSection.innerHTML = "";
+    var div = document.createElement("div");
+    div.innerHTML = outHtml;
+    document.getElementById("writtenArea").appendChild(div);
+    return;
+  }
+  // 逐题 AI 判
+  var scores = [];
+  var judgeNext = function (i) {
+    if (i >= subjTotal) {
+      for (var k = 0; k < scores.length; k++) subjScore += scores[k];
+      var total2 = choiceScore + subjScore;
+      var div2 = document.createElement("div");
+      div2.innerHTML = '<p>主观题得分：<b style="color:#38A169">' + subjScore + '</b> / 40</p>' +
+        '<p style="font-size:18px;margin-top:10px">总分：<b style="color:#2B6CB0">' + total2 + '</b> / 100</p>' +
+        '<p style="font-size:13px;color:#718096;margin-top:6px">' + (total2 >= 80 ? "👍 很不错，继续保持！" : total2 >= 60 ? "💪 及格了，错题再练练" : "📚 还需加油，重点看错题") + '</p>';
+      subjSection.appendChild(div2);
+      return;
+    }
+    var sq = p.subj[i];
+    var ansEl = document.getElementById("wms_" + i);
+    var ans = ansEl ? ansEl.value.trim() : "";
+    var aiOut = document.getElementById("wms_ai_" + i);
+    if (!ans) {
+      scores.push(0);
+      aiOut.style.display = "block";
+      aiOut.textContent = "未作答，0 分。参考答案：" + sq.ref;
+      judgeNext(i + 1);
+      return;
+    }
+    aiOut.style.display = "block";
+    aiOut.textContent = "AI 判题中…";
+    var fakeQ = { q: sq.q, a: sq.ref, s: 4, t: ["theory"] };
+    callAI(cfg, fakeQ, ans, function (ev) {
+      var sc10 = Math.round(ev.score); // 0-10
+      var sc100 = Math.round(sc10); // 每题满分10，直接用
+      scores.push(sc100);
+      aiOut.textContent = "🤖 AI 评分：" + sc100 + "/10" + (ev.comment ? "
+" + ev.comment : "");
+      judgeNext(i + 1);
+    }, function () {
+      scores.push(0);
+      aiOut.textContent = "AI 判题失败，0 分。参考答案：" + sq.ref;
+      judgeNext(i + 1);
+    });
+  };
+  subjSection.innerHTML = "";
+  judgeNext(0);
+}
 
 /* ================= 随机小测 ================= */
 function renderQuizMain(main) {
