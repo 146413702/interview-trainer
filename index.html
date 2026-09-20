@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.39</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.40</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1855,6 +1855,14 @@ function pickInterviewQuestions(n) {
     if (!progressed) break;
     round++;
   }
+  // 自我介绍类(project)放第一题，其余技术题随机打乱（更接近真实面试）
+  var intro = chosen.filter(function (x) { return x.cid === "project"; });
+  var rest = chosen.filter(function (x) { return x.cid !== "project"; });
+  for (var i = rest.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = rest[i]; rest[i] = rest[j]; rest[j] = tmp;
+  }
+  chosen = intro.concat(rest);
   return { main: chosen, bonus: bonusPool };
 }
 /* ============ 流式语音识别（边说边出字） ============ */
