@@ -684,14 +684,14 @@ var WM_CHOICE = [
   {q:"Dockerfile 的作用是？",opts:["启动容器","定义镜像构建步骤","管理网络","数据备份"],a:1},
   {q:"TCP 三次握手的主要目的是？",opts:["数据加密","建立可靠连接","压缩数据","路由转发"],a:1},
   {q:"CI/CD 中持续集成（CI）的主要目的是？",opts:["部署上线","频繁集成尽早发现集成问题","监控告警","数据备份"],a:1},
-  {q:"Git 撤销已 commit 但未 push 的提交，用？",opts:["git reset --soft HEAD~1","git push","git clone","git branch"],a:0}
-];,
-{q:"Spring Boot 和 Spring MVC 的关系是？",opts:["Boot 替代了 MVC","Boot 是脚手架，MVC 是 Web 框架，Boot 自动装配 MVC","两者完全无关","MVC 是 Boot 的升级版"],a:1},
+  {q:"Git 撤销已 commit 但未 push 的提交，用？",opts:["git reset --soft HEAD~1","git push","git clone","git branch"],a:0},
+  {q:"Spring Boot 和 Spring MVC 的关系是？",opts:["Boot 替代了 MVC","Boot 是脚手架，MVC 是 Web 框架，Boot 自动装配 MVC","两者完全无关","MVC 是 Boot 的升级版"],a:1},
 {q:"MySQL 联合索引 (a,b,c)，以下哪个查询能用到索引？",opts:["where b=?","where c=?","where a=? and b=?","where b=? and c=?"],a:2},
 {q:"以下哪种情况索引会失效？",opts:["where a=?","where a=? and b=?","where DATE(create_time)='2026-01-01'","where a>10 and b=?"],a:2},
 {q:"TCP 和 UDP 的区别，正确的是？",opts:["TCP 无连接，UDP 面向连接","TCP 可靠有序，UDP 快速不可靠","TCP 比 UDP 快","UDP 保证数据不丢"],a:1},
 {q:"WebSocket 相比 HTTP 的优势是？",opts:["更安全","全双工长连接，服务器可主动推送","更简单","不需要握手"],a:1},
 {q:"密码加密推荐用哪种？",opts:["MD5","明文","bcrypt/Argon2 慢哈希","Base64"],a:2}
+];
 var WM_SUBJ = [
   {type:"SQL",q:"销售表 sales(product_name, amount)，查询每个产品总销量大于 1000 的产品名及总销量，按总销量降序排列。",ref:"SELECT product_name, SUM(amount) AS total FROM sales GROUP BY product_name HAVING SUM(amount) > 1000 ORDER BY total DESC;"},
   {type:"SQL",q:"用户表 users(id, name, age)，查询年龄大于平均年龄的所有用户。",ref:"SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users);"},
@@ -702,11 +702,11 @@ var WM_SUBJ = [
   {type:"场景",q:"用户反馈「网站打不开了」，你的排查思路是什么？",ref:"从外到内：网络层(ping/curl/DNS) → Web服务器(nginx进程/日志/配置) → 系统资源(CPU/内存/磁盘) → 应用层(进程/日志) → 依赖(MySQL/Redis) → 防火墙/安全组。"},
   {type:"场景",q:"服务器 CPU 突然飙升到 100%，怎么定位是哪个进程/原因？",ref:"top 按P找高CPU进程 → top -H -p PID 找高CPU线程 → 转16进制 → jstack 看线程栈（Java）或 strace 看系统调用。"},
   {type:"SQL",q:"查询员工表 employees(salary) 中第二高的薪资（如果只有一个薪资返回 NULL）。",ref:"SELECT MAX(salary) AS SecondHighestSalary FROM employees WHERE salary < (SELECT MAX(salary) FROM employees);"},
-  {type:"场景",q:"MySQL 主从同步延迟很大（Seconds_Behind_Master 很高），怎么排查和解决？",ref:"找原因：大事务/从库单线程回放/从库硬件差/从库跑慢查询/网络差。解决：拆大事务、开并行复制(MTS)、升从库硬件、优化慢SQL、主从同机房。"}
-];,
+  {type:"场景",q:"MySQL 主从同步延迟很大（Seconds_Behind_Master 很高），怎么排查和解决？",ref:"找原因：大事务/从库单线程回放/从库硬件差/从库跑慢查询/网络差。解决：拆大事务、开并行复制(MTS)、升从库硬件、优化慢SQL、主从同机房。"},
 {type:"编程",q:"给定一个数组（可能有重复元素），在不扩容的情况下如何去重？写出思路或伪代码。",ref:"用双指针：i 指向已去重部分末尾，j 遍历数组。如果 nums[j] 和 nums[i] 不同，i++ 并把 nums[j] 复制到 nums[i]。最后 i+1 就是去重后的长度。（适用于有序数组；无序用 HashSet 但需要额外空间）"},
 {type:"编程",q:"用 Java 设计一个闹钟功能，怎么保证到点后闹钟一定会响？（考虑程序重启/宕机）",ref:"思路：1) 定时任务（ScheduledExecutorService/Quartz）2) 持久化闹钟任务到数据库/文件，重启后加载 3) 时间到了触发提醒（声音/推送）4) 防重复触发（状态标记）5) 分布式场景用 Redis 过期监听或消息队列。面试加分：提到持久化+重试+幂等。"},
 {type:"编程",q:"合并两个有序单向链表，写出思路或伪代码。",ref:"双指针法：p1 指向 list1 头，p2 指向 list2 头。每次比较两个指针的值，小的接到结果链表，指针后移。一个链表走完后把另一个剩余部分接上。时间 O(n+m)，空间 O(1)。"}
+];
 var wmState = null;
 function renderWrittenMain(main) {
   var html = '<div class="toolbox"><h2>📝 笔试模拟</h2>' +
@@ -814,8 +814,7 @@ function submitWrittenExam() {
       var sc10 = Math.round(ev.score); // 0-10
       var sc100 = Math.round(sc10); // 每题满分10，直接用
       scores.push(sc100);
-      aiOut.textContent = "🤖 AI 评分：" + sc100 + "/10" + (ev.comment ? "
-" + ev.comment : "");
+      aiOut.textContent = "🤖 AI 评分：" + sc100 + "/10" + (ev.comment ? "\n" + ev.comment : "");
       judgeNext(i + 1);
     }, function () {
       scores.push(0);
@@ -2961,7 +2960,7 @@ QDATA["linux"] = [
 {"s":4,"t":["troubleshoot"],"q":"服务器磁盘满了怎么排查？","a":"按从大到小定位：\n①df -h 确认哪个分区满了\n②du -sh /* | sort -rh | head -10 找最大的目录\n③逐层 du 往下，定位到具体文件\n常见原因：日志没清理、大文件误存、数据库文件大、Docker 镜像/容器占用\n处理：该删的删；日志用 > file.log 清空（不要直接 rm 正在写入的日志文件，否则句柄还在、空间不释放）；Docker 用 docker system prune 清理；治本：配 logrotate 轮转 + 磁盘监控告警","c":"这是我真实处理过的故障，可以完整讲：\n项目联调阶段，前端反馈接口大面积超时。排查：\n①df -h 一看根分区 100%；\n②du -sh /var/log 定位到应用日志写了几个 G（联调期日志级别 debug，没轮转）；\n③处理：先 > 日志文件清空恢复服务（不能 rm 正在写入的日志，否则句柄还占着空间），服务立刻恢复；\n④治本：配 logrotate 按天轮转 + 压缩、保留 7 天；写磁盘巡检脚本（超过 80% 发邮件提醒）挂 crontab。\n之后磁盘再没满过，整个过程 20 分钟恢复。这个案例我每次讲故障都会提。"}
 ,
 {"s":4,"t":["practice"],"q":"手写 Shell 脚本的最小必要知识有哪些？（变量/条件/循环/管道/cron）","a":"【基本结构】第一行 #!/bin/bash，然后写命令。\n【变量】name=王毅寒（等号两边无空格），引用 $name。\n【条件】if [ $CPU -gt 80 ]; then ... fi（-gt大于/-lt小于/-eq等于）。\n【循环】for f in *.log; do ... done（遍历文件）。\n【管道】ps aux | grep nginx、df -h | grep /dev、tail -f app.log | grep ERROR。\n【cron】crontab -e 编辑，格式：分 时 日 月 周 命令。* * * * * 每分钟跑，0 2 * * * 每天凌晨2点。\n【面试话术】我用 AI 辅助写脚本提高效率，但核心逻辑（定时任务、日志清理、服务检查）都清楚，能看懂也能自己改。"},
-{"s":4,"t":["practice"],"q":"面试官让你手写一个清理 7 天前日志的脚本，怎么写？","a":"一行命令搞定：\nfind /var/log -name "*.log" -mtime +7 -delete\n\n解释：find 找文件，/var/log 目录，-name "*.log" 找日志文件，-mtime +7 找 7 天前修改的，-delete 删除。\n如果要更安全（先看再删）：find /var/log -name "*.log" -mtime +7 -exec ls -lh {} \\;（先列出不删，确认没问题再加 -delete）"},
+{"s":4,"t":["practice"],"q":"面试官让你手写一个清理 7 天前日志的脚本，怎么写？","a":"一行命令搞定：\nfind /var/log -name \"*.log\" -mtime +7 -delete\n\n解释：find 找文件，/var/log 目录，-name \"*.log\" 找日志文件，-mtime +7 找 7 天前修改的，-delete 删除。\n如果要更安全（先看再删）：find /var/log -name \"*.log\" -mtime +7 -exec ls -lh {} \\;（先列出不删，确认没问题再加 -delete）"},
 {"s":4,"t":["practice"],"q":"查看 CPU 占用最高的 5 个进程，用什么命令？","a":"方法1：top 打开后按 P 键按 CPU 排序\n方法2：一行命令：ps aux --sort=-%cpu | head -6\n解释：ps aux 列出所有进程，--sort=-%cpu 按 CPU 降序，head -6 取前5个（含表头）。\n面试加分：能说出 top 里按 P（CPU）/M（内存）排序。"},
 {"s":3,"t":["practice"],"q":"统计 Nginx 访问日志里访问量最高的 IP，怎么写？","a":"awk '{print \$1}' access.log | sort | uniq -c | sort -rn | head -10\n解释：awk 取第一列（IP），sort 排序，uniq -c 去重计数，sort -rn 按数字降序，head -10 取前10。\n面试加分：能说清每一步在干嘛（取IP→排序→计数→再排序→取前10）。"},
 {"s":3,"t":["practice"],"q":"检查 nginx 服务是否运行，没运行就自动启动，怎么写？","a":"if ! systemctl is-active nginx > /dev/null 2>&1; then systemctl start nginx; fi\n或者一行：systemctl is-active nginx || systemctl start nginx\n解释：systemctl is-active 检查状态，|| 表示前面失败就执行后面。\n面试加分：能说出这就是「服务保活脚本」的基本思路。"}
