@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.36</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.37</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -231,7 +231,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
     var v = getParam(location.hash, "qb_voice");
     if (v) {
       localStorage.setItem("qb_voice", decodeURIComponent(escape(atob(v))));
-      setTimeout(function () { alert("✅ 语音配置已自动导入并保存！现在可以开始语音通话面试了。"); }, 300);
+      setTimeout(function () { alert("✅ 语音配置已自动导入并保存！现在可以录语音条、点转文字了。"); }, 300);
     }
     var a = getParam(location.hash, "qb_ai");
     if (a) {
@@ -1273,6 +1273,122 @@ function concatPcm(chunks) {
   for (i = 0; i < chunks.length; i++) { out.set(chunks[i], off); off += chunks[i].length; }
   return out;
 }
+// ===== 微信式语音条：聊天区发语音，点「↩ 转文字」转写后作为回答发送给 AI（保留 AI 追问/评分）=====
+var VoiceBar = { on: false, mr: null, chunks: [], t0: 0, blob: null, playAudio: null };
+function startVoiceBar() {
+  if (VoiceBar.on) return;
+  var c = getVoiceCfg();
+  if (!(c && c.xfAppid && c.xfKey && c.xfSecret)) {
+    alert('请先在「语音设置」里配置讯飞 APPID / APIKey / APISecret（console.xfyun.cn 创建「语音听写」应用，有免费额度），语音条才能转文字。\n\n不配置也可以用输入法语音键或直接打字回答。');
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('当前环境不支持录音（需要 HTTPS）。可直接打字回答。'); return; }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    VoiceBar.on = true; VoiceBar.chunks = []; VoiceBar.t0 = Date.now();
+    var mime = 'audio/mp4';
+    try {
+      if (!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4'))) mime = 'audio/webm';
+    } catch (eM) { mime = 'audio/webm'; }
+    try { VoiceBar.mr = new MediaRecorder(stream, { mimeType: mime }); } catch (eM2) { VoiceBar.mr = new MediaRecorder(stream); }
+    VoiceBar.mr.ondataavailable = function (e) { if (e.data && e.data.size) VoiceBar.chunks.push(e.data); };
+    VoiceBar.mr.onstop = function () {
+      try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (eT) {}
+      VoiceBar.on = false;
+      var blob = new Blob(VoiceBar.chunks, { type: mime });
+      VoiceBar.blob = blob;
+      var mb = document.getElementById('ivMic');
+      if (mb) mb.textContent = '🎙️';
+      var sb = document.getElementById('ivMicStop');
+      if (sb) sb.style.display = 'none';
+      addVoiceMsg(blob);
+    };
+    VoiceBar.mr.start(250);
+    var mb = document.getElementById('ivMic');
+    if (mb) mb.textContent = '🔴 录音中…';
+    var sb = document.getElementById('ivMicStop');
+    if (sb) sb.style.display = 'inline-block';
+    var tip = document.getElementById('ivMicTip');
+    if (tip) tip.innerHTML = '<b>🔴 正在录音…</b> 说完点「⏹ 停止」生成语音条。';
+  }).catch(function (err) { alert('无法访问麦克风：' + (err && err.name || err) + '。可直接打字回答。'); });
+}
+function stopVoiceBar() {
+  if (VoiceBar.on && VoiceBar.mr) { try { VoiceBar.mr.stop(); } catch (e) {} }
+}
+function addVoiceMsg(blob) {
+  var chat = document.getElementById('ivChat');
+  if (!chat) return;
+  var url = URL.createObjectURL(blob);
+  var dur = Math.max(1, Math.round((Date.now() - VoiceBar.t0) / 1000));
+  var d = document.createElement('div');
+  d.className = 'msg user';
+  d.innerHTML = '<span class="avatar">🙋</span><div class="bubble">' +
+    '<div class="voice-bar" onclick="playVoiceBar(this)" data-url="' + url + '" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#95EC69,#07C160);color:#fff;padding:8px 14px;border-radius:18px;font-size:14px;min-width:120px">' +
+    '<span style="font-size:12px">🔊</span><span style="font-size:12px">▶</span><span style="letter-spacing:2px;opacity:.9">▮▮▮▮▮▮▮▮</span><span>' + dur + '&quot;</span></div>' +
+    '<div class="vb-actions" style="margin-top:6px"><button class="iv-tts-btn" onclick="playVoiceBar(this.parentNode.previousElementSibling)">▶ 播放</button> ' +
+    '<button class="iv-tts-btn" onclick="transcribeVoiceBar(this)">↩ 转文字</button></div>' +
+    '<div class="vb-text" style="display:none;margin-top:6px;font-size:13px;color:#718096"></div></div>';
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
+function playVoiceBar(el) {
+  if (!el) return;
+  var url = el.getAttribute('data-url');
+  if (!url) return;
+  try { if (VoiceBar.playAudio) VoiceBar.playAudio.pause(); } catch (eP) {}
+  var a = new Audio(url);
+  VoiceBar.playAudio = a;
+  a.play().catch(function () {
+    // iOS fMP4 只播开头：先修复头再播
+    fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (ab) {
+      var fixed = fixFmp4Buf(ab);
+      var nb = new Blob([fixed], { type: 'audio/mp4' });
+      var u2 = URL.createObjectURL(nb);
+      el.setAttribute('data-url', u2);
+      var a2 = new Audio(u2);
+      VoiceBar.playAudio = a2;
+      a2.play().catch(function () {});
+    }).catch(function () {});
+  });
+}
+function transcribeVoiceBar(btn) {
+  var bubble = btn.closest('.bubble');
+  if (!bubble) return;
+  var barEl = bubble.querySelector('.voice-bar');
+  var url = barEl.getAttribute('data-url');
+  var txtEl = bubble.querySelector('.vb-text');
+  var cfg = getVoiceCfg();
+  if (!(cfg && cfg.xfAppid)) { alert('请先配置讯飞语音设置。'); return; }
+  if (!url) { alert('没有可转写的语音。'); return; }
+  btn.disabled = true; btn.textContent = '转写中…';
+  fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (ab) {
+    var fixed = fixFmp4Buf(ab);
+    var DCtx = window.AudioContext || window.webkitAudioContext;
+    var dctx = new DCtx();
+    return dctx.decodeAudioData(fixed).then(function (ab2) {
+      try { dctx.close(); } catch (eC) {}
+      var ch = ab2.getChannelData(0);
+      var pcm16 = downsample16(ch, ab2.sampleRate, 16000);
+      var trimmed = trimSilence16(pcm16, 16000);
+      if (!trimmed) { throw new Error('录音里检测不到有效语音，请靠近麦克风重录'); }
+      var norm = normalizePcm(trimmed, 12);
+      return new Promise(function (res) { xfRecognize(cfg, norm.pcm, res); });
+    }).then(function (text) {
+      if (!text) { throw new Error('讯飞没有识别出内容，可重试或直接打字'); }
+      txtEl.style.display = 'block';
+      txtEl.innerHTML = '📝 ' + esc(text);
+      btn.disabled = false; btn.textContent = '↩ 重新转文字';
+      // 转写成功 → 作为回答发送给 AI（保留追问/评分）
+      typing(true);
+      var snd = document.getElementById('ivSend');
+      if (snd) snd.disabled = true;
+      setTimeout(function () { handleAnswer(text); }, 500);
+    });
+  }).catch(function (err) {
+    btn.disabled = false; btn.textContent = '↩ 转文字';
+    txtEl.style.display = 'block';
+    txtEl.innerHTML = '⚠️ ' + esc(err && err.message || '转写失败') + '（可重试，或直接打字回答）';
+  });
+}
 function startRec() {
   if (Voice.recOn) return;
   var isCall = Call.active;
@@ -2266,9 +2382,8 @@ function callHangup() {
 }
 function renderInterviewMain(main) {
   var html = '<div class="toolbox"><h2>🎤 模拟面试（回合制交互）</h2>' +
-    '<p>两种面试方式：<b>📞 语音通话模式</b>（像打电话：AI 念题+点评，你语音作答，手动确认后 AI 才接话）和 <b>💬 文字模式</b>（聊天式回合制）。<b>题量不固定</b>：AI 按你的临场表现动态调整——答得好多问深挖、连续答差会提前收尾（约 6~14 题，语音模式 30 分钟软上限）。🎁 1★超纲加分题：答出加分、答不出不扣分。内置规则引擎开箱即用；配置 AI 接口后支持 AI 现场生成追问（可一键收录为新题）。</p>' +
-    '<button class="btn btn-primary" onclick="startCallInterview()">📞 开始语音通话面试（10 题）</button> ' +
-    '<button class="btn" onclick="startInterview()">💬 文字模式面试（10 题）</button> ' +
+    '<p>💬 <b>聊天式模拟面试（微信式）</b>：可以直接打字，也可以点 <b>🎙️</b> 录语音条（像微信发语音），再点语音条下的「↩ 转文字」把语音转成文字发给 AI。<b>题量不固定</b>：AI 按你的临场表现动态调整——答得好多问深挖、连续答差会提前收尾（约 6~14 题）。🎁 1★超纲加分题：答出加分、答不出不扣分。内置规则引擎开箱即用；配置 AI 接口后支持 AI 现场生成追问（可一键收录为新题）。</p>' +
+    '<button class="btn btn-primary" onclick="startInterview()">💬 开始聊天式面试（约 10 题）</button> ' +
     '<button class="btn" onclick="switchMode(\'history\')">查看历史面试报告</button></div>' +
     '<details class="ai-config"><summary>⚙️ 可选：配置 AI 接口（不配也能用内置引擎）</summary>' +
     '<label>接口地址（OpenAI 兼容，如 https://api.deepseek.com/chat/completions）</label><input id="aiUrl" placeholder="https://...">' +
@@ -2282,8 +2397,8 @@ function renderInterviewMain(main) {
         '<option value="hr">💼 HR 面（软素质）</option>' +
       '</select></div>' +
     '<button class="btn" onclick="saveAiConfig()">保存配置</button> <span id="aiCfgTip" style="font-size:12px;color:#718096"></span></details>' +
-    '<details class="ai-config"><summary>🎙️ 语音设置（AI 念题 + 语音作答，AI 不会打断你）</summary>' +
-    '<p style="font-size:12px;color:#718096;margin:4px 0 8px">语音识别用「讯飞语音听写」（浏览器直连，需免费注册）。不配置也能用：直接打字，或用手机输入法自带的语音键输入。</p>' +
+    '<details class="ai-config"><summary>🎙️ 语音条转文字（讯飞语音听写，可选）</summary>' +
+    '<p style="font-size:12px;color:#718096;margin:4px 0 8px">语音条「↩ 转文字」用「讯飞语音听写」（浏览器直连，需免费注册，有免费额度）。不配置也能用：直接打字，或用手机输入法自带的语音键输入。</p>' +
     '<label>讯飞 APPID</label><input id="vXfAppid" placeholder="console.xfyun.cn 注册后创建「语音听写」应用获取">' +
     '<label>讯飞 APIKey</label><input id="vXfKey" type="password" placeholder="APIKey">' +
     '<label>讯飞 APISecret</label><input id="vXfSecret" type="password" placeholder="APISecret">' +
@@ -2313,10 +2428,10 @@ function startInterview() {
   main.innerHTML = '<div class="iv-chat"><div class="iv-chat-head">🎤 AI 面试官 <span style="font-weight:400;color:#718096" id="ivProgress">准备开始…</span></div>' +
     '<div class="iv-chat-body" id="ivChat"></div>' +
     '<div class="iv-input-bar">' +
-    '<button class="iv-mic" id="ivMic" onclick="startRec()" title="语音回答：点这里开始说，说完点「说完了」">🎙️</button>' +
-    '<button class="iv-done" id="ivDone" style="display:none" onclick="stopRec()">✅ 说完了</button>' +
-    '<textarea class="iv-input" id="ivInput" placeholder="输入你的回答...（Enter 发送，Shift+Enter 换行；或点🎙️语音回答）"></textarea><button class="iv-send" id="ivSend" onclick="sendAnswer()">发送</button></div>' +
-    '<div class="iv-mic-tip" id="ivMicTip">💡 语音作答：点 🎙️ 开始录音，说完点「✅ 说完了」，识别结果会填进输入框，你确认后再点「发送」——AI 全程不会打断你。</div>' +
+    '<button class="iv-mic" id="ivMic" onclick="startVoiceBar()" title="录语音条：点开始，说完点停止">🎙️</button>' +
+    '<button class="iv-done" id="ivMicStop" style="display:none" onclick="stopVoiceBar()">⏹ 停止</button>' +
+    '<textarea class="iv-input" id="ivInput" placeholder="输入你的回答...（Enter 发送；或点🎙️录语音条，像微信发语音）"></textarea><button class="iv-send" id="ivSend" onclick="sendAnswer()">发送</button></div>' +
+    '<div class="iv-mic-tip" id="ivMicTip">💡 微信式语音条：点 🎙️ 开始录音 → 说完点 ⏹ 停止 → 生成语音条 → 点语音条下「↩ 转文字」发给 AI；也可以直接打字。AI 全程不打断你。</div>' +
     '<div class="iv-status" id="ivStatus">面试进行中… 输入回答后回车或点发送</div></div>';
   addMsg("ai", "你好，我是本次模拟面试的面试官。按你的简历（CI/CD、Docker Compose 容器化、MySQL+Redis 高可用、运维全栈实践）准备了一套题。答不上来如实说即可，我会判断并追问。准备好了我们就开始：");
   setTimeout(function () {
