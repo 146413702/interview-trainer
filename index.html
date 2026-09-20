@@ -214,7 +214,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.38</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.39</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -1043,7 +1043,7 @@ markStudy("open");
 .msg.user .avatar { background: #F0FFF4; }
 .bubble { padding: 9px 13px; border-radius: 12px; font-size: 14px; line-height: 1.65; word-break: break-word; }
 .msg.ai .bubble { background: #fff; border: 1px solid var(--border); border-top-left-radius: 4px; }
-.msg.user .bubble { background: var(--accent); color: #fff; border-top-right-radius: 4px; white-space: pre-wrap; }
+.msg.user .bubble { background: #07C160; color: #fff; border-top-right-radius: 4px; white-space: pre-wrap; }
 .bubble.sys { background: #F1F5F9; color: var(--text-secondary); font-size: 12.5px; font-style: italic; }
 .iv-input-bar { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); align-items: flex-end; background: #fff; }
 .iv-input { flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 14px; resize: none; min-height: 42px; max-height: 120px; outline: none; font-family: inherit; }
@@ -1326,7 +1326,7 @@ function addVoiceMsg(blob) {
     '<span style="font-size:12px">🔊</span><span style="font-size:12px">▶</span><span style="letter-spacing:2px;opacity:.9">▮▮▮▮▮▮▮▮</span><span>' + dur + '&quot;</span></div>' +
     '<div class="vb-actions" style="margin-top:6px"><button class="iv-tts-btn" onclick="playVoiceBar(this.parentNode.previousElementSibling)">▶ 播放</button> ' +
     '<button class="iv-tts-btn" onclick="transcribeVoiceBar(this)">↩ 转文字</button></div>' +
-    '<div class="vb-text" style="display:none;margin-top:6px;font-size:14px;color:#1A202C;font-weight:500;line-height:1.5"></div></div>';
+    '<div class="vb-text" style="display:none;margin-top:6px;font-size:14px;color:#000000;font-weight:600;line-height:1.5"></div></div>';
   chat.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
 }
