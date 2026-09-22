@@ -215,7 +215,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragi
   <main class="main" id="mainContent"></main>
 </div>
 
-<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.45</b> <span id="protoChk"></span></div>
+<div class="footer">由豆包根据简历定制生成 · 学习进度/错题集/历史记录保存在本机浏览器（localStorage） · <b id="appVersion">v7.46</b> <span id="protoChk"></span></div>
 
 <script>
 /* ============ 配置一键导入：链接尾部 #qb_voice=<base64>&qb_ai=<base64> 自动写入并提示 ============ */
@@ -2965,6 +2965,9 @@ QDATA["linux"] = [
 {"s":3,"t":["practice"],"q":"统计 Nginx 访问日志里访问量最高的 IP，怎么写？","a":"awk '{print \$1}' access.log | sort | uniq -c | sort -rn | head -10\n解释：awk 取第一列（IP），sort 排序，uniq -c 去重计数，sort -rn 按数字降序，head -10 取前10。\n面试加分：能说清每一步在干嘛（取IP→排序→计数→再排序→取前10）。"},
 {"s":3,"t":["practice"],"q":"检查 nginx 服务是否运行，没运行就自动启动，怎么写？","a":"if ! systemctl is-active nginx > /dev/null 2>&1; then systemctl start nginx; fi\n或者一行：systemctl is-active nginx || systemctl start nginx\n解释：systemctl is-active 检查状态，|| 表示前面失败就执行后面。\n面试加分：能说出这就是「服务保活脚本」的基本思路。"}
 
+,
+{"s":2,"t":["practice"],"q":"Linux 用户与组管理常用命令有哪些？","a":"①创建用户：useradd 用户名（-m 建家目录 -s 指定shell -g 指定组）\n②设置密码：passwd 用户名\n③修改用户组：usermod -g 主组 用户（-G 附加组，可多个）\n④删除用户：userdel 用户（-r 连带删除家目录）\n⑤查看用户：cat /etc/passwd；查看组：cat /etc/group；查看用户所属组：groups 用户名\n⑥创建组：groupadd 组名；删除组：groupdel 组名\n注意：云服务器一般不建议直接删 root，用普通用户+sudo。\n面试加分：能说出 useradd -m -g 组合使用、/etc/passwd 存用户信息这个点。"}
+
 ];
 </script><script>
 window.QDATA = window.QDATA || {};
@@ -3067,6 +3070,12 @@ QDATA["mysql"] = [
 {"s":4,"t":["theory"],"q":"MySQL 的 binlog 和 redo log 有什么区别？","a":"两者都是日志，但有本质区别：\n| 维度 | binlog（归档日志） | redo log（重做日志） |\n| 所属层级 | Server 层，所有引擎都有 | InnoDB 引擎特有 |\n| 日志类型 | 逻辑日志（记录 SQL / 行变更） | 物理日志（记录数据页修改） |\n| 作用 | 主从复制、数据恢复 | 崩溃恢复（保证持久性，ACID 的 D） |\n| 写入时机 | 事务提交时写入 | WAL 机制：先写 redo 再改数据页 |\n| 文件形式 | 多个文件按大小滚动 | 固定大小循环写（ib_logfile0/1） |\n一句话记忆：binlog 用来复制和归档，redo log 用来崩溃恢复，两者配合实现 MySQL 的数据安全和主从复制。","c":"搭一主两从时对这两个日志理解特别深：\n①binlog：主库要开 log-bin（我们用的 row 格式），从库就是靠拉主库 binlog 做复制的；它是 Server 层的逻辑日志，所有引擎都有；\n②redo log：InnoDB 引擎的物理日志，WAL 机制先写 redo 再改数据页，保证机器突然断电数据不丢（崩溃恢复靠它）；\n③面试常追问'为什么主从复制用 binlog 不用 redo log'：redo log 是循环写的物理日志、只有 InnoDB 有；binlog 是完整的逻辑日志、记录所有引擎的事务，可追溯可恢复，适合做复制和归档。\n一句话：binlog 管复制和恢复，redo log 管崩溃恢复，两者配合。"},
 {"s":1,"t":["theory"],"q":"InnoDB 的自适应哈希索引（AHI）是什么？","a":"超纲加分题（应届答不出正常，答出是亮点）。\n- AHI（Adaptive Hash Index）：InnoDB 对频繁访问的索引页，在内存中自动维护一个哈希索引，让\"索引值→数据页\"的等值查询从 B+ 树多次 IO 变成 O(1) 哈希查找。\n- 自动：不需要 DBA 建，InnoDB 监控访问模式，命中条件（同一索引页被等值访问次数达到阈值）自动创建；访问模式变化会自动删除。\n- 注意：AHI 只加速等值查询（=、IN），范围查询不走；它占 InnoDB buffer pool 的一部分；默认开启（innodb_adaptive_hash_index=ON）。\n- 面试加分点：能说出\"自适应、自动建立/销毁、只对热点等值查询生效、占用 buffer pool\"就算答到位。"},
 {"s":1,"t":["theory"],"q":"redo log 的组提交（Group Commit）是怎么工作的？","a":"超纲加分题（应届答不出正常，答出是亮点）。\n- 问题：每个事务提交都要刷一次 redo log 到磁盘（fsync），高并发下磁盘 IO 是瓶颈。\n- 组提交：多个事务在提交时合并成一批，只做一次 fsync，一次磁盘刷盘完成多个事务的持久化——大幅提升写入吞吐。\n- 实现：提交时事务先进入队列，由 leader 事务统一刷盘，其余事务（follower）等 leader 刷完即视为已提交。\n- 面试关联：这是\"MySQL 高并发写入性能\"的重要机制，和 binlog 的组提交、两阶段提交（redo prepare → binlog → redo commit）配合，是主从一致性的基础。"}
+,
+{"s":5,"t":["theory"],"q":"内连接、左连接、右连接的区别？","a":"①内连接 INNER JOIN：只返回两表匹配上的行（交集）\n②左连接 LEFT JOIN：返回左表全部行 + 右表匹配的行，没匹配的右表字段为 NULL\n③右连接 RIGHT JOIN：返回右表全部行 + 左表匹配的行\n记忆：LEFT JOIN 以左表为主（左表全保留），RIGHT JOIN 以右表为主，INNER 只要都能对上的。\n面试加分：能举业务例子（查所有用户+他们的订单，用 LEFT JOIN 保留没下单的用户）。"},
+{"s":5,"t":["theory"],"q":"数据库三大范式是什么？实际开发要不要严格遵守？","a":"①1NF：字段不可再分（原子性），一列只存一个值\n②2NF：在1NF基础上，非主键字段完全依赖主键（消除部分依赖）\n③3NF：在2NF基础上，非主键字段不依赖其他非主键字段（消除传递依赖）\n【实际开发】\n- 大部分表做到 3NF，减少数据冗余、保证一致性\n- 但**不是死板遵守**：查询性能要求高时用「反范式」——故意加冗余字段/冗余表，用空间换时间，减少 JOIN\n- 例子：订单表冗余商品名（本来可以 JOIN 商品表查），省一次关联查询\n面试加分：能说出「范式保证一致性，反范式换性能，两者要平衡」。"},
+{"s":3,"t":["theory"],"q":"SQL 语句的执行顺序是什么？","a":"逻辑执行顺序（不是书写顺序）：\nFROM → JOIN → ON → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT\n要点：\n①WHERE 在分组前过滤（不能有聚合函数），HAVING 在分组后过滤（可以有聚合函数）\n②SELECT 的别名不能在 WHERE 用，但能在 ORDER BY 用（执行顺序不同）\n③LIMIT 最后执行\n面试加分：能解释「为什么 WHERE 不能用聚合函数——因为 WHERE 在 GROUP BY 之前执行」。"},
+{"s":2,"t":["theory"],"q":"什么是存储过程？有什么优缺点？","a":"存储过程：把多条 SQL 语句封装成一个可调用的程序单元，存数据库里，通过 CALL 调用。\n【优点】\n①减少网络传输（一次调用执行多句 SQL）\n②可复用、逻辑集中\n③权限控制方便\n【缺点】\n①难调试、难维护\n②数据库压力大、不易迁移\n③扩展性差（逻辑放数据库不好做水平扩展）\n面试加分：能说出「现在主流做法是业务逻辑放应用层，存储过程少用」这个行业趋势。"}
+
 ];
 </script><script>
 window.QDATA = window.QDATA || {};
@@ -3117,6 +3126,16 @@ QDATA["java"] = [
 {"s":3,"t":["theory"],"q":"JWT 和 Session/Radius 认证的区别？","a":"Session：服务器存会话状态，客户端存 sessionId（Cookie），有状态，扩展需要共享 Session（Redis）。\nJWT（JSON Web Token）：无状态，服务器不存 session，token 里存用户信息+签名，客户端每次请求带 token，服务器验签即可。适合分布式/跨域。\nRadius：网络接入认证协议（VPN/拨号），UDP 1812，AAA 架构（认证/授权/计费），用于网络设备接入。\n简单记：Session 有状态存在服务器，JWT 无状态存在客户端，Radius 是网络设备认证协议。"},
 {"s":3,"t":["theory"],"q":"什么是 token？（AI 大模型语境）","a":"在大模型（ChatGPT/DeepSeek）语境下：\n- Token 是模型处理文本的最小单位，大致 1 个汉字 ≈ 1~2 个 token，1 个英文单词 ≈ 1 个 token\n- 输入和输出都按 token 计费（API 按 token 收费）\n- 有上下文长度限制（比如 4k/8k/32k/128k token），超出要截断或摘要\n面试加分：能说清「token ≠ 字符 ≠ 词」，是模型分词后的单位，直接影响 API 成本和上下文窗口。"},
 {"s":2,"t":["theory"],"q":"提示词工程（Prompt Engineering）怎么写好？","a":"写好提示词的要点：\n1. **角色明确**：你是一个资深运维工程师...\n2. **任务清晰**：请帮我分析...\n3. **给示例**：few-shot，给 1~2 个输入输出样例\n4. **约束明确**：输出格式、字数、风格\n5. **分步思考**：让模型一步步分析（Chain of Thought）\n6. **上下文充分**：给足背景信息\n面试加分：提到 few-shot、CoT（思维链）、系统提示词 vs 用户提示词的区别。"}
+
+,
+{"s":5,"t":["theory"],"q":"String、StringBuilder、StringBuffer 三者的区别？","a":"①String：不可变，每次拼接都会创建新对象，大量拼接时性能差且浪费内存。\n②StringBuilder：可变，线程不安全，单线程拼接性能最好（推荐）。\n③StringBuffer：可变，线程安全（方法加 synchronized），性能略低于 StringBuilder。\n面试加分：能说出「String 不可变，StringBuilder 单线程快，StringBuffer 多线程安全」这个核心区别。经典对比题：循环 1 万次字符串拼接，String 最慢，StringBuilder 最快。"},
+{"s":4,"t":["theory"],"q":"抽象类和接口的区别？怎么选择？","a":"【区别】\n①抽象类：可以含抽象方法和普通方法、成员变量、构造方法；单继承。\n②接口：JDK8 前只有抽象方法，JDK8+ 有默认方法和静态方法；只能有常量（public static final）；多实现、接口可多继承。\n③语义：抽象类描述「是什么」（is-a），接口描述「能做什么」（can-do）。\n【选择】\n- 多个类有公共代码要复用 → 抽象类\n- 只定义行为规范、不关心实现 → 接口\n- 需要多继承能力 → 接口\n面试加分：能说出「抽象类是模板，接口是契约」。"},
+{"s":4,"t":["theory"],"q":"Spring Bean 的生命周期？","a":"核心流程：\n①实例化：反射创建对象（构造器）\n②属性填充：依赖注入（@Autowired 等）\n③初始化前：BeanPostProcessor 的 postProcessBeforeInitialization\n④初始化：@PostConstruct → InitializingBean.afterPropertiesSet() → init-method\n⑤初始化后：BeanPostProcessor 的 postProcessAfterInitialization（AOP 代理在这里生成）\n⑥使用：放入容器供调用\n⑦销毁：@PreDestroy → DisposableBean.destroy() → destroy-method\n面试加分：记住「实例化→注入→初始化→使用→销毁」五阶段，AOP 代理在初始化后生成。"},
+{"s":4,"t":["theory"],"q":"线程的生命周期有哪几种状态？","a":"Java 线程六种状态（Thread.State）：\n①NEW：新建，还没 start()\n②RUNNABLE：可运行（就绪+运行中，等待 CPU 调度）\n③BLOCKED：阻塞，等待获取锁（synchronized）\n④WAITING：等待，wait()/join() 无时限等待，需要被唤醒\n⑤TIMED_WAITING：限时等待，sleep()/wait(ms)\n⑥TERMINATED：终止，执行完\n状态流转：NEW → start → RUNNABLE → 抢锁失败 BLOCKED / wait 进入 WAITING → 唤醒回 RUNNABLE → 执行完 TERMINATED。\n面试加分：能画出状态流转图，说清 BLOCKED（等锁）和 WAITING（等唤醒）的区别。"},
+{"s":3,"t":["theory"],"q":"Java 反射机制是什么？有什么用？","a":"反射：程序运行时动态获取类的信息（类名/方法/字段/注解）并调用，不需要编译期就知道。\n核心类：Class、Method、Field、Constructor。\n获取 Class 三种方式：Class.forName()、类.class、对象.getClass()。\n【用途】\n①框架底层：Spring IOC 用反射创建 Bean、MyBatis 用反射映射结果\n②动态代理：JDK Proxy\n③IDEA 补全提示、调试工具\n【优缺点】\n- 优点：灵活、动态、框架的基础\n- 缺点：性能比直接调用慢、破坏封装、有安全风险\n面试加分：能说出 Spring/MyBatis 都是基于反射实现的，说明你理解框架底层。"},
+{"s":3,"t":["theory"],"q":"Spring 的循环依赖怎么解决？","a":"循环依赖：A 依赖 B，B 依赖 A，创建时互相等对方。\n【Spring 怎么解决】三级缓存：\n①一级缓存 singletonObjects：完整 Bean\n②二级缓存 earlySingletonObjects：半成品 Bean（已实例化未完全初始化）\n③三级缓存 singletonFactories：Bean 工厂（存 lambda 提前暴露）\n流程：创建 A → A 依赖 B → 创建 B → B 依赖 A → 从三级缓存拿到 A 的提前引用 → B 完成 → A 继续完成。\n【限制】\n- 只解决「构造器注入」之外的循环依赖（setter/字段注入）\n- 构造器注入的循环依赖无法解决（创建时就互相要）\n- 原型 scope 不解决\n面试加分：能说出三级缓存和「提前暴露引用」这个核心思路。"},
+{"s":3,"t":["theory"],"q":"Java 8 有哪些常用新特性？（Lambda/Stream/Optional）","a":"①Lambda 表达式：匿名函数简化写法，(参数) -> 表达式\n②函数式接口：只有一个抽象方法的接口，如 Runnable、Comparator、Predicate\n③Stream API：集合的流式操作，filter/map/sorted/collect，链式调用\n④Optional：包装可能为 null 的值，避免空指针（orElse/get/isPresent）\n⑤接口默认方法（default）和静态方法\n⑥方法引用 ::\n⑦新日期时间 API（LocalDate/LocalDateTime）\n面试加分：能现场写一个 Stream 例子（如过滤+排序+收集列表），比背概念强。"},
+{"s":2,"t":["theory"],"q":"什么是泛型？什么是泛型擦除？","a":"泛型：编译期类型安全机制，把类型参数化，如 List<String>，编译期检查类型，不用强转。\n【泛型擦除】Java 泛型是编译期概念，编译后擦除成原始类型（List<String> 变 List），运行期拿不到泛型类型信息。\n- 好处：兼容老代码\n- 坏处：运行期不能 new T()、不能判断泛型具体类型、静态方法不能用类泛型\n【通配符】？ extends T（上限）、？ super T（下限）\n面试加分：能说出「泛型是编译期橡皮擦，运行时不存在」。"}
 
 ];
 </script><script>
@@ -3256,6 +3275,10 @@ QDATA["project"] = [
 {"s":4,"t":["project","design"],"q":"设计一个秒杀系统（高并发抢商品），怎么设计？","a":"【需求】瞬时大量请求，库存有限，不能超卖。\n【核心思路：层层拦截，尽量少请求到数据库】\n1. 前端：按钮置灰防重复点击、静态页面 CDN 化（不让请求到服务器）\n2. 限流：网关层限流（Nginx/Sentinel），超出直接拒绝\n3. 库存预热：商品库存提前加载到 Redis\n4. Redis 扣库存：DECR 扣库存，扣到 0 就没了（原子操作）\n5. 异步下单：扣完库存扔 MQ，后端慢慢创建订单\n6. 数据库：最终扣减，和 Redis 对账\n【防超卖】\n- Redis 原子扣减：DECR 是原子的，不会超卖\n- 数据库乐观锁：UPDATE stock = stock - 1 WHERE stock > 0\n【边界考虑】\n- 防刷：验证码、接口限流、用户级别限流（一个用户只能抢一次）\n- 订单超时未支付自动取消，回滚库存\n- 降级：秒杀系统挂了不影响主站\n【面试加分】提到 Redis 预扣库存 + MQ 异步下单 + 数据库最终一致。"},
 {"s":4,"t":["project","design"],"q":"设计一个文件上传系统（支持大文件分片/断点续传），怎么设计？","a":"【需求】支持大文件上传，断点续传，不重复传。\n【核心流程】\n1. 前端计算文件 MD5（唯一标识）\n2. 查后端这个 MD5 有没有传过/传了一部分（已传分片列表）\n3. 没传过：把文件切成多个分片（比如 5MB 一片），逐个上传\n4. 传过一部分：只传没传过的分片（断点续传）\n5. 全部分片传完：通知后端合并分片\n6. 后端合并：按顺序把分片合并成完整文件\n【关键设计】\n- 秒传：如果 MD5 已存在（别人传过一样的文件），直接返回成功，不用传\n- 分片去重：每个分片也有 MD5，传过的跳过\n- 合并：后端按文件名+序号排序合并，合并完删分片\n- 存储：上传到 OSS/分布式文件系统（不存本地磁盘）\n【边界考虑】\n- 上传进度：前端实时显示进度\n- 失败重试：单个分片失败重传，不用整个文件重传\n- 存储扩容：用 OSS/S3，不用自己管磁盘\n【面试加分】提到 MD5 秒传、分片断点续传、用 OSS 存储。"},
 {"s":3,"t":["project","design"],"q":"设计一个短信/邮件发送系统，怎么设计？","a":"【需求】批量发短信/邮件，可靠、不丢、不重复。\n【架构】业务系统 → MQ → 发送服务 → 短信/邮件服务商\n【核心设计】\n1. 异步：发短信不用同步等，扔 MQ 就行（不然用户等很久）\n2. 重试：发送失败自动重试（最多 3 次），还是失败进死信队列\n3. 限流：短信服务商有频率限制，按服务商的 QPS 限流\n4. 模板：短信内容用模板（验证码模板/通知模板），变量替换\n5. 记录：每条短信都记录（发送时间、手机号、内容、状态）\n【边界考虑】\n- 防轰炸：同一个手机号 1 分钟最多发 1 条验证码\n- 去重：重复提交同一个短信，不重复发\n- 到达率：多接几个服务商，一个挂了切另一个\n- 成本：统计每条短信成本，优化模板减少字数\n【面试加分】提到异步 MQ、重试+死信、限流防轰炸。"}
+
+,
+{"s":4,"t":["hr"],"q":"你已经毕业了，但简历上没有实际工作经历，怎么解释？","a":"参考话术（坦诚+展示实战能力）：\n「我毕业前一直在培训机构按生产标准做项目，没有去公司实习，但我的项目都是按上线标准搭建的——CI/CD 流水线、MySQL 主从、Redis 哨兵这些都不是上课演示，是我自己手动搭出来、手动模拟故障验证过的。我对运维日常工作（部署、监控、排障）是能直接上手的，上手成本低。」\n要点：\n①不回避：承认没有公司经历\n②转劣势为优势：培训项目按生产标准做，说明有实战动手能力\n③强调上手快：可以直接干活，不用公司培养很久\n④配合场景题：把「网站打不开」「CPU 飙升」的排查思路答好，比口头解释更有说服力"},
+{"s":3,"t":["hr"],"q":"你期望薪资多少？对加班怎么看？（杭州社招高频）","a":"【薪资话术】\n- 说区间不说死数：『杭州运维/DevOps 应届-初级岗位大概 8-12k，我期望在这个范围，具体可以结合岗位职责和公司福利谈。』\n- 先反问范围：『方便问一下咱们这个岗位的薪资范围吗？』\n- 应届培训出身建议：报中低位（不虚高），强调「更看重成长和平台」\n【加班话术】\n- 不拒绝但表明态度：『运维本身就有突发情况，线上出问题我肯定第一时间响应，这点我能接受。如果是常态化无效加班，我更希望能通过自动化把效率提上去——这也是我想做 DevOps 的原因。』\n- 要点：接受合理加班（运维特性）+ 表达想用技术减少无效加班，显得成熟\n【杭州互联网补充】杭州大厂多、节奏快，说「接受业务高峰期加班，看重成长」一般比较稳。"}
 
 ];
 </script><script>
