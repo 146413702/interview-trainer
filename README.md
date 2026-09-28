@@ -11,7 +11,7 @@
 
 ## ✨ 功能特性
 
-- **307 道面试题**：14 个分类（Linux/Shell、Git/GitLab、CI/CD、Docker、Nginx、MySQL、Redis、Java/Spring、JVM、网络、监控、安全、K8s、项目综合/HR），每题含参考答案 + **简记版**（一句话记忆要点，方便快速背诵）
+- **327 道面试题**：14 个分类（Linux/Shell、Git/GitLab、CI/CD、Docker、Nginx、MySQL、Redis、Java/Spring、JVM、网络、监控、安全、K8s、项目综合/HR），每题含参考答案 + **简记版**（一句话记忆要点，方便快速背诵）
 - **12 道 ★1 超纲加分题**：🎁 答出加分、答不出不扣分（OverlayFS、runc、eBPF、ZGC、TSDB 等真超纲题）
 - **刷题打卡**：已刷/已掌握状态、打卡日历、分类掌握度可视化
 - **随机小测**：从未掌握题中抽 5 题，AI 判题打分，不合格自动进错题集
@@ -58,4 +58,4 @@ README.md       本文档
 
 ---
 
-*个人求职准备工具 · 持续迭代中（v7.52）*
+*个人求职准备工具 · 持续迭代中（v7.53）*
